@@ -1,0 +1,30 @@
+@import '@fontsource-variable/bricolage-grotesque';
+@import '@fontsource-variable/inter';
+@import '@fontsource-variable/jetbrains-mono';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    background: #14142B;
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    @apply bg-ink text-text font-body antialiased;
+    margin: 0;
+  }
+  :focus-visible {
+    outline: 2px solid #F4B740;
+    outline-offset: 3px;
+    border-radius: 6px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
