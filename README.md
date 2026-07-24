@@ -76,9 +76,3 @@ api/
 ## Atalhos de teclado
 
 `espaço` revela / acerta · `1` erro · `2` acerto · `r` repete o áudio.
-
-## Fora de escopo (decisões conscientes)
-
-- **Importar o histórico do Anki** — só o conteúdo vem; os cartões recomeçam o agendamento no FSRS.
-- **Nota automática de pronúncia** — a comparação de voz é de ouvido, não uma pontuação.
-- **Reagendar cartões existentes após otimizar** — os parâmetros novos passam a valer na próxima revisão de cada frase.

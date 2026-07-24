@@ -19,8 +19,8 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       manifest: {
-        name: 'Cadence — inglês por frases',
-        short_name: 'Cadence',
+        name: 'Lingo — inglês por frases',
+        short_name: 'Lingo',
         description: 'Repetição espaçada com áudio nativo para estudo de inglês.',
         theme_color: '#14142B',
         background_color: '#14142B',
