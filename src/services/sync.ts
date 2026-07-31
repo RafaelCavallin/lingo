@@ -12,8 +12,8 @@ import { db, type Card, type Deck, type ReviewLog } from './db'
  * na casa de dezenas de KB.
  */
 
-const KEY_STORAGE = 'cadence.syncKey'
-const LAST_SYNC = 'cadence.lastSync'
+const KEY_STORAGE = 'lingo.syncKey'
+const LAST_SYNC = 'lingo.lastSync'
 
 export interface Snapshot {
   version: 2
@@ -84,30 +84,37 @@ export async function sync(): Promise<SyncResult> {
   if (!key) throw new SyncNotConfigured('Defina uma frase-chave de sincronização nos ajustes.')
 
   const local = await localSnapshot()
+  console.log('[sync] local:', { decks: local.decks.length, cards: local.cards.length, reviewLogs: local.reviewLogs.length })
 
   const pull = await fetch(`/api/sync?key=${encodeURIComponent(key)}`)
+  console.log('[sync] pull status:', pull.status)
   if (pull.status === 501) throw new SyncNotConfigured('Sincronização não configurada no servidor.')
   if (!pull.ok && pull.status !== 404) throw new Error('Não foi possível baixar os dados remotos.')
 
   const remote: Snapshot =
     pull.status === 404 ? { version: 2, decks: [], cards: [], reviewLogs: [] } : await pull.json()
+  console.log('[sync] remote:', { decks: remote.decks.length, cards: remote.cards.length, reviewLogs: remote.reviewLogs.length })
 
   const { merged, pulled } = merge(local, remote)
+  console.log('[sync] merged:', { decks: merged.decks.length, cards: merged.cards.length, reviewLogs: merged.reviewLogs.length, pulled })
 
   await db.transaction('rw', db.decks, db.cards, db.reviewLogs, async () => {
     await db.decks.bulkPut(merged.decks)
     await db.cards.bulkPut(merged.cards)
     await db.reviewLogs.bulkPut(merged.reviewLogs)
   })
+  console.log('[sync] local db updated')
 
   const push = await fetch(`/api/sync?key=${encodeURIComponent(key)}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(merged),
   })
+  console.log('[sync] push status:', push.status)
   if (!push.ok) throw new Error('Os dados locais foram atualizados, mas o envio falhou.')
 
   const at = Date.now()
   localStorage.setItem(LAST_SYNC, String(at))
+  console.log('[sync] done at', new Date(at).toISOString())
   return { pulled, pushed: merged.cards.length + merged.reviewLogs.length, at }
 }

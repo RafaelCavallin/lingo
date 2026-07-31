@@ -6,49 +6,57 @@
  * Não há contas nem login: quem tem a frase, tem os dados. Suficiente para uso
  * pessoal, e o suficiente é o ponto.
  *
- * Backend: qualquer KV com API REST (Upstash Redis, Vercel KV).
+ * Backend: Redis (LINGO_REDIS_URL) via protocolo nativo — por isso roda no
+ * runtime Node.js (não edge, que não permite socket TCP). A conexão é aberta
+ * e fechada a cada requisição: mantê-la viva em escopo de módulo trava o
+ * `vercel dev` local (o processo nunca se considera "ocioso" com o socket
+ * aberto). O custo de reconectar a cada sync é imperceptível para uso pessoal.
  */
-export const config = { runtime: 'edge' }
+import Redis from 'ioredis'
 
-const URL_BASE = process.env.KV_REST_API_URL
-const TOKEN = process.env.KV_REST_API_TOKEN
+const REDIS_URL = process.env.LINGO_REDIS_URL
 const MAX_BYTES = 4_000_000
 
 export default async function handler(req: Request): Promise<Response> {
-  if (!URL_BASE || !TOKEN) return text('Sincronização não configurada no servidor.', 501)
+  console.log('[api/sync]', req.method, 'redis configured:', !!REDIS_URL)
+  if (!REDIS_URL) return text('Sincronização não configurada no servidor.', 501)
 
-  const key = new URL(req.url).searchParams.get('key')?.trim()
+  const key = new URL(req.url, 'http://localhost').searchParams.get('key')?.trim()
   if (!key || key.length < 8) return text('Frase-chave ausente ou curta demais.', 400)
 
-  const slot = `cadence:${await hash(key)}`
+  const slot = `lingo:${await hash(key)}`
+  console.log('[api/sync] slot:', slot)
 
-  if (req.method === 'GET') {
-    const res = await kv(['GET', slot])
-    const value = (await res.json().catch(() => null)) as { result?: string | null } | null
-    if (!value?.result) return text('Nada sincronizado ainda.', 404)
-    return new Response(value.result, {
-      status: 200,
-      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
-    })
+  const redis = new Redis(REDIS_URL, { maxRetriesPerRequest: 1 })
+  redis.on('error', (err) => console.error('[api/sync] redis client error:', err))
+
+  try {
+    if (req.method === 'GET') {
+      const value = await redis.get(slot)
+      console.log('[api/sync] GET bytes:', value?.length ?? 0)
+      if (!value) return text('Nada sincronizado ainda.', 404)
+      return new Response(value, {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+      })
+    }
+
+    if (req.method === 'PUT') {
+      const body = await req.text()
+      console.log('[api/sync] PUT bytes:', body.length)
+      if (body.length > MAX_BYTES) return text('Snapshot grande demais.', 413)
+      await redis.set(slot, body)
+      console.log('[api/sync] PUT ok')
+      return text('ok', 200)
+    }
+
+    return text('Method not allowed', 405)
+  } catch (e) {
+    console.error('[api/sync] redis error:', e)
+    return text('O armazenamento recusou a operação.', 502)
+  } finally {
+    redis.disconnect()
   }
-
-  if (req.method === 'PUT') {
-    const body = await req.text()
-    if (body.length > MAX_BYTES) return text('Snapshot grande demais.', 413)
-    const res = await kv(['SET', slot, body])
-    if (!res.ok) return text('O armazenamento recusou a gravação.', 502)
-    return text('ok', 200)
-  }
-
-  return text('Method not allowed', 405)
-}
-
-function kv(command: string[]): Promise<Response> {
-  return fetch(URL_BASE!, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(command),
-  })
 }
 
 /** A frase-chave só existe no aparelho; o servidor vê apenas o hash. */

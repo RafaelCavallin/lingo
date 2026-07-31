@@ -50,7 +50,12 @@ export const webSpeech: SpeechProvider = {
 let el: HTMLAudioElement | null = null
 const audioEl = () => (el ??= new Audio())
 
-export class TtsUnavailable extends Error {}
+/** `permanent` marca "não configurado" (501) — só esse caso desliga a nuvem pro resto da sessão. */
+export class TtsUnavailable extends Error {
+  constructor(message: string, public readonly permanent = false) {
+    super(message)
+  }
+}
 
 let currentVoice = DEFAULT_VOICE
 /** Trocar a voz invalida o cache: o áudio antigo continua salvo, mas não é usado. */
@@ -74,7 +79,14 @@ export const cloudTts: SpeechProvider = {
     // Mantém o timbre ao reduzir a velocidade, em vez de gerar um segundo áudio.
     ;(a as HTMLAudioElement & { preservesPitch?: boolean }).preservesPitch = true
     a.playbackRate = rate
-    await a.play()
+    try {
+      await a.play()
+    } catch (e) {
+      // stop() chama pause() para trocar de áudio; isso rejeita a promise de
+      // play() em andamento mesmo quando o som já havia começado a tocar.
+      if (e instanceof DOMException && e.name === 'AbortError') return
+      throw e
+    }
   },
 }
 
@@ -85,13 +97,18 @@ async function getOrFetch(cardId: string, text: string): Promise<Blob> {
     .first()
   if (cached) return cached.blob
 
-  const res = await fetch('/api/tts', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text, voice: currentVoice }),
-  })
+  let res: Response
+  try {
+    res = await fetch('/api/tts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, voice: currentVoice }),
+    })
+  } catch {
+    throw new TtsUnavailable('O serviço de áudio não respondeu.')
+  }
 
-  if (res.status === 501) throw new TtsUnavailable('Voz neural não configurada.')
+  if (res.status === 501) throw new TtsUnavailable('Voz neural não configurada.', true)
   if (!res.ok) throw new TtsUnavailable('O serviço de áudio não respondeu.')
 
   const blob = await res.blob()
@@ -125,7 +142,7 @@ export const speech: SpeechProvider = {
     try {
       await cloudTts.warm(cardId, text)
     } catch (e) {
-      if (e instanceof TtsUnavailable) cloudDisabledForSession = true
+      if (e instanceof TtsUnavailable && e.permanent) cloudDisabledForSession = true
     }
   },
   async speak(cardId, text, rate) {
@@ -134,8 +151,9 @@ export const speech: SpeechProvider = {
         await cloudTts.speak(cardId, text, rate)
         return
       } catch (e) {
-        if (e instanceof TtsUnavailable) cloudDisabledForSession = true
-        else throw e
+        if (e instanceof TtsUnavailable) {
+          if (e.permanent) cloudDisabledForSession = true
+        } else throw e
       }
     }
     await webSpeech.speak(cardId, text, rate)

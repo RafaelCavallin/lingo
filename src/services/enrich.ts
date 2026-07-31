@@ -37,8 +37,11 @@ export async function enrich(sentence: string, signal?: AbortSignal): Promise<En
       })
 
       if (res.status === 501) {
+        const detail = await res.json().catch(() => null)
         throw new EnrichUnavailable(
-          'Geração automática não configurada: falta ANTHROPIC_API_KEY no servidor.',
+          detail && typeof detail === 'object' && 'error' in detail
+            ? String((detail as { error: unknown }).error)
+            : 'Geração automática não configurada no servidor.',
         )
       }
       // 404 quase sempre significa que as funções de /api não estão no ar —

@@ -50,7 +50,7 @@ export function Home({
     const url = URL.createObjectURL(await exportBackup())
     const a = document.createElement('a')
     a.href = url
-    a.download = `cadence-backup-${new Date().toISOString().slice(0, 10)}.json`
+    a.download = `lingo-backup-${new Date().toISOString().slice(0, 10)}.json`
     a.click()
     URL.revokeObjectURL(url)
   }
@@ -61,7 +61,7 @@ export function Home({
   return (
     <div className="mx-auto flex min-h-dvh max-w-2xl flex-col px-5 pb-10 pt-8">
       <header className="flex items-baseline justify-between">
-        <h1 className="font-display text-lg tracking-tight">Cadence</h1>
+        <h1 className="font-display text-lg tracking-tight">Lingo</h1>
         <span className="font-mono text-xs text-muted">{deck.name}</span>
       </header>
 

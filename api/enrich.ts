@@ -4,14 +4,22 @@
  * Papel único: esconder a chave de API e padronizar o prompt.
  * Nada é persistido aqui; o resultado volta para o front, que valida com Zod
  * e abre o formulário preenchido e editável.
+ *
+ * Provedor trocável por ENRICH_PROVIDER (anthropic | gemini, padrão anthropic) —
+ * ver api/_lib/enrichProviders.ts. Trocar de provedor é só trocar essa variável
+ * e preencher a chave correspondente no .env.
  */
+import { PROVIDERS, UpstreamError } from './_lib/enrichProviders'
+
 export const config = { runtime: 'edge' }
 
-// Haiku dá conta de tradução curta e dicas, com a menor latência e custo.
-// Troque por claude-sonnet-5 se quiser dicas mais elaboradas.
 // `||` e não `??`: a variável vem como string vazia quando o .env a declara
 // sem valor, e "" precisa cair no padrão igual a undefined.
-const MODEL = process.env.ENRICH_MODEL?.trim() || 'claude-haiku-4-5-20251001'
+const PROVIDER_NAME = process.env.ENRICH_PROVIDER?.trim() || 'anthropic'
+const PROVIDER = PROVIDERS[PROVIDER_NAME]
+
+// Modelo do provedor ativo; troque por claude-sonnet-5 / gemini-2.5-flash etc. se quiser dicas mais elaboradas.
+const MODEL = process.env.ENRICH_MODEL?.trim() || PROVIDER?.defaultModel
 
 const SYSTEM = `Você ajuda um brasileiro a estudar inglês por frases inteiras.
 
@@ -34,8 +42,12 @@ Responda SOMENTE com JSON válido, sem markdown, sem crases, sem texto antes ou 
 export default async function handler(req: Request): Promise<Response> {
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
 
-  const key = process.env.ANTHROPIC_API_KEY
-  if (!key) return json({ error: 'Chave da API não configurada no servidor.' }, 501)
+  if (!PROVIDER) {
+    return json({ error: `ENRICH_PROVIDER inválido: "${PROVIDER_NAME}".` }, 501)
+  }
+
+  const key = process.env[PROVIDER.envKey]
+  if (!key) return json({ error: `Chave da API não configurada no servidor: falta ${PROVIDER.envKey}.` }, 501)
 
   let sentence: string | undefined
   try {
@@ -47,33 +59,7 @@ export default async function handler(req: Request): Promise<Response> {
   if (sentence.length > 500) return json({ error: 'Frase longa demais.' }, 400)
 
   try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': key,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        max_tokens: 600,
-        system: SYSTEM,
-        messages: [{ role: 'user', content: sentence.trim() }],
-      }),
-    })
-
-    if (!res.ok) {
-      // O detalhe da API vai para o log do servidor; o cliente recebe só o status.
-      console.error('enrich upstream', res.status, await res.text().catch(() => ''))
-      return json({ error: `A API respondeu ${res.status}.`, upstream: res.status }, 502)
-    }
-
-    const data = (await res.json()) as { content?: { type: string; text?: string }[] }
-    const raw = (data.content ?? [])
-      .filter((b) => b.type === 'text')
-      .map((b) => b.text ?? '')
-      .join('')
-      .trim()
+    const raw = await PROVIDER.call({ apiKey: key, model: MODEL!, system: SYSTEM, sentence: sentence.trim() })
 
     // O modelo é instruído a não usar crases, mas a limpeza custa pouco.
     const clean = raw.replace(/^```(?:json)?/i, '').replace(/```$/, '').trim()
@@ -82,7 +68,10 @@ export default async function handler(req: Request): Promise<Response> {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     })
-  } catch {
+  } catch (e) {
+    if (e instanceof UpstreamError) {
+      return json({ error: `A API respondeu ${e.status}.`, upstream: e.status }, 502)
+    }
     return json({ error: 'Não foi possível falar com o serviço de tradução.' }, 502)
   }
 }

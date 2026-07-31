@@ -2,11 +2,11 @@ import { useMemo } from 'react'
 
 const CELL = 11
 const GAP = 3
-const WEEKS = 53
+const WEEKS = 40
 const MONTHS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
 
 /**
- * Constância dos últimos 12 meses. Sem lib de gráfico: é uma grade de retângulos,
+ * Constância dos últimos 10 meses. Sem lib de gráfico: é uma grade de retângulos,
  * e escrevê-la à mão custa menos que a dependência.
  */
 export function Heatmap({ counts }: { counts: Map<string, number> }) {
@@ -22,7 +22,7 @@ export function Heatmap({ counts }: { counts: Map<string, number> }) {
         height={height}
         viewBox={`0 0 ${width} ${height}`}
         role="img"
-        aria-label={`Revisões por dia nos últimos 12 meses. Melhor dia: ${max} revisões.`}
+        aria-label={`Revisões por dia nos últimos 10 meses. Melhor dia: ${max} revisões.`}
         className="min-w-full"
       >
         {monthMarks.map((m) => (

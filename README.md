@@ -30,6 +30,8 @@ Abre em `http://localhost:5173`. Roda **sem nenhuma chave de API**: o cadastro f
 
 Para ligar a geração automática de tradução/dicas e a voz neural, copie `.env.example` para `.env` e preencha as chaves. Como as funções em `api/` dependem do runtime da Vercel, use `npx vercel dev` em vez de `npm run dev` nesse caso.
 
+A geração automática de tradução/dicas funciona com Anthropic (padrão) ou Gemini — troque o provedor com `ENRICH_PROVIDER=anthropic` ou `ENRICH_PROVIDER=gemini` e preencha a chave correspondente (`ANTHROPIC_API_KEY` ou `GEMINI_API_KEY`). Ver `api/_lib/enrichProviders.ts` para adicionar outros provedores.
+
 ### Scripts
 
 | Comando           | O que faz                                  |
@@ -68,9 +70,10 @@ src/
   components/      Waveform, ClozeEditor, VoiceCompare, Heatmap
   workers/         optimizer.worker.ts (fsrs-browser em wasm)
 api/
-  enrich.ts        LLM → { translation, hints[] } em JSON
-  tts.ts           Voz neural en-US → MP3
-  sync.ts          Snapshot em KV, indexado pelo hash da frase-chave
+  enrich.ts               LLM → { translation, hints[] } em JSON
+  _lib/enrichProviders.ts Provedores de LLM (Anthropic, Gemini) atrás de interface comum
+  tts.ts                  Voz neural en-US → MP3
+  sync.ts                 Snapshot em KV, indexado pelo hash da frase-chave
 ```
 
 ## Atalhos de teclado

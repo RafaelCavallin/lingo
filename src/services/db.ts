@@ -15,7 +15,6 @@ export interface Deck {
   createdAt: number
   newCardsPerDay: number
   youngLimit: number
-  /** Fase 4 */
   updatedAt: number
   listenFirst: boolean
   voice: string
@@ -44,7 +43,6 @@ export interface Card {
   state: State
   lastReview?: number
   createdAt: number
-  /** Fase 4: base do merge na sincronização. */
   updatedAt: number
   deletedAt?: number
 }
@@ -69,7 +67,7 @@ export interface AudioBlob {
   voice?: string
 }
 
-export const db = new Dexie('cadence') as Dexie & {
+export const db = new Dexie('lingo') as Dexie & {
   decks: EntityTable<Deck, 'id'>
   cards: EntityTable<Card, 'id'>
   reviewLogs: EntityTable<ReviewLog, 'id'>

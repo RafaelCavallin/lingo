@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { db, MAX_RATE, MIN_RATE, VOICES, type Deck } from '../services/db'
-import { setVoice, setSpeechRate, speech, normalRate } from '../services/audio'
+import { setVoice, setSpeechRate, speech, normalRate, usingNeuralVoice } from '../services/audio'
 import { lastSyncAt, setSyncKey, sync, syncKey, SyncNotConfigured } from '../services/sync'
 import { MIN_REVIEWS, NotEnoughData, optimize, reviewCount } from '../services/optimizer'
 
@@ -16,6 +16,7 @@ export function Settings({ deck, onBack }: { deck: Deck; onBack: () => void }) {
     message: null,
     tone: null,
   })
+  const [neuralVoice, setNeuralVoice] = useState(usingNeuralVoice())
   const [reviews, setReviews] = useState(0)
   const [optState, setOptState] = useState<{ busy: boolean; message: string | null; tone: 'ok' | 'bad' | null }>({
     busy: false,
@@ -25,20 +26,26 @@ export function Settings({ deck, onBack }: { deck: Deck; onBack: () => void }) {
 
   useEffect(() => {
     reviewCount().then(setReviews)
+    speech.warm('preview', SAMPLE).finally(() => setNeuralVoice(usingNeuralVoice()))
   }, [])
+
+  async function playSample(rate: number) {
+    await speech.speak('preview', SAMPLE, rate)
+    setNeuralVoice(usingNeuralVoice())
+  }
 
   async function chooseVoice(v: string) {
     setLocalVoice(v)
     setVoice(v)
     await db.decks.update(deck.id, { voice: v, updatedAt: Date.now() })
-    void speech.speak('preview', SAMPLE, normalRate())
+    void playSample(normalRate())
   }
 
   /** Salva ao soltar o slider, não a cada pixel arrastado. */
   async function commitRate(v: number) {
     setSpeechRate(v)
     await db.decks.update(deck.id, { speechRate: v, updatedAt: Date.now() })
-    void speech.speak('preview', SAMPLE, v)
+    void playSample(v)
   }
 
   async function toggleListenFirst(v: boolean) {
@@ -105,6 +112,12 @@ export function Settings({ deck, onBack }: { deck: Deck; onBack: () => void }) {
             Todas com sotaque americano. Trocar a voz regenera a narração na próxima vez que cada
             frase aparecer — o áudio antigo continua salvo, mas deixa de ser usado.
           </p>
+          {!neuralVoice && (
+            <p className="mt-3 rounded-lg border border-miss/40 bg-miss/10 px-3 py-2 text-sm text-miss">
+              Voz neural indisponível nesta sessão — as 4 opções abaixo estão soando com a voz do
+              navegador, que não diferencia entre elas.
+            </p>
+          )}
           <div className="mt-4 grid grid-cols-2 gap-2">
             {VOICES.map((v) => (
               <button
@@ -155,7 +168,7 @@ export function Settings({ deck, onBack }: { deck: Deck; onBack: () => void }) {
           </div>
 
           <button
-            onClick={() => speech.speak('preview', SAMPLE, rate)}
+            onClick={() => playSample(rate)}
             className="mt-4 rounded-full border border-line px-4 py-2 font-mono text-xs uppercase tracking-wider text-muted transition hover:border-signal hover:text-signal"
           >
             ▸ Ouvir amostra

@@ -6,3 +6,5 @@ dev-dist
 .vercel
 tsconfig.tsbuildinfo
 .claude/settings.local.json
+.claude
+.agents
