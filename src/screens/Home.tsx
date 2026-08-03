@@ -1,8 +1,13 @@
 import { useEffect, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, exportBackup, type Deck } from '../services/db'
+import { db, exportBackup, liveCards, type Deck } from '../services/db'
 import { buildQueue, estimateMinutes } from '../services/scheduler'
 import { Heatmap, iso } from '../components/Heatmap'
+import { speech } from '../services/audio'
+import { DeckSwitcher } from '../components/DeckSwitcher'
+
+/** Só os primeiros cartões: a home não deve puxar a fila inteira da rede. */
+const WARM_ON_HOME = 2
 
 export function Home({
   deck,
@@ -11,6 +16,7 @@ export function Home({
   onImport,
   onProgress,
   onSettings,
+  onCards,
 }: {
   deck: Deck
   onStudy: () => void
@@ -18,11 +24,13 @@ export function Home({
   onImport: () => void
   onProgress: () => void
   onSettings: () => void
+  onCards: () => void
 }) {
   const [queueSize, setQueueSize] = useState<number | null>(null)
   const [minutes, setMinutes] = useState(0)
+  const [switcherOpen, setSwitcherOpen] = useState(false)
 
-  const total = useLiveQuery(() => db.cards.where('deckId').equals(deck.id).count(), [deck.id])
+  const total = useLiveQuery(() => liveCards(deck.id).count(), [deck.id])
   const reviewedToday = useLiveQuery(() => {
     const start = new Date()
     start.setHours(0, 0, 0, 0)
@@ -42,6 +50,9 @@ export function Home({
   useEffect(() => {
     buildQueue(deck).then(async (q) => {
       setQueueSize(q.length)
+      // Baixa o áudio das primeiras frases enquanto o usuário ainda está na
+      // home: ao tocar em "Estudar" o som já está em disco.
+      for (const c of q.slice(0, WARM_ON_HOME)) void speech.warm(c.id, c.sentence)
       setMinutes(await estimateMinutes(q.length))
     })
   }, [deck, reviewedToday, total])
@@ -62,8 +73,15 @@ export function Home({
     <div className="mx-auto flex min-h-dvh max-w-2xl flex-col px-5 pb-10 pt-8">
       <header className="flex items-baseline justify-between">
         <h1 className="font-display text-lg tracking-tight">Lingo</h1>
-        <span className="font-mono text-xs text-muted">{deck.name}</span>
+        <button
+          onClick={() => setSwitcherOpen(true)}
+          className="font-mono text-xs text-muted transition hover:text-signal"
+        >
+          {deck.name} ▾
+        </button>
       </header>
+
+      {switcherOpen && <DeckSwitcher onClose={() => setSwitcherOpen(false)} />}
 
       <main className="flex flex-1 flex-col justify-center py-14">
         {empty ? (
@@ -125,6 +143,7 @@ export function Home({
         <div className="flex gap-5">
           <button onClick={onAdd} className="hover:text-signal">+ Frase</button>
           <button onClick={onImport} className="hover:text-signal">Importar</button>
+          <button onClick={onCards} className="hover:text-signal">Cartões</button>
           <button onClick={onProgress} className="hover:text-signal">Progresso</button>
           <button onClick={download} className="hover:text-signal">Backup</button>
           <button onClick={onSettings} className="hover:text-signal">Ajustes</button>

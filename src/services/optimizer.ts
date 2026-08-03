@@ -1,4 +1,4 @@
-import { db, type Deck } from './db'
+import { db, liveCards, type Deck } from './db'
 import { useParameters } from './scheduler'
 import type { OptimizeRequest, OptimizeResponse } from '../workers/optimizer.worker'
 
@@ -7,8 +7,8 @@ export const MIN_REVIEWS = 400
 
 export class NotEnoughData extends Error {}
 
-export async function reviewCount(): Promise<number> {
-  return db.reviewLogs.count()
+export async function reviewCount(deckId: string): Promise<number> {
+  return db.reviewLogs.where('deckId').equals(deckId).count()
 }
 
 /**
@@ -16,7 +16,7 @@ export async function reviewCount(): Promise<number> {
  * com o intervalo em dias desde a revisão anterior daquele mesmo cartão.
  */
 async function buildHistory(deck: Deck): Promise<OptimizeRequest> {
-  const cards = await db.cards.where('deckId').equals(deck.id).toArray()
+  const cards = await liveCards(deck.id).toArray()
   const ids = new Set(cards.map((c) => c.id))
   const logs = (await db.reviewLogs.orderBy('reviewedAt').toArray()).filter((l) => ids.has(l.cardId))
 

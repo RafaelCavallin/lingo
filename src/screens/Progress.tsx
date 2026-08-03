@@ -14,7 +14,7 @@ export function Progress({ deck, onBack }: { deck: Deck; onBack: () => void }) {
   }, [deck])
 
   async function savePace(next: Partial<Deck>) {
-    await db.decks.update(deck.id, next)
+    await db.decks.update(deck.id, { ...next, updatedAt: Date.now() })
   }
 
   if (!stats) {

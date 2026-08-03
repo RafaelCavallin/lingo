@@ -33,8 +33,20 @@ export default async function handler(req: Request): Promise<Response> {
         input: body.text.trim(),
         response_format: 'mp3',
       }),
+      // A revisão não pode travar esperando a nuvem: passou disso, o front usa
+      // a voz do navegador.
+      signal: AbortSignal.timeout(8_000),
     })
 
+    // Chave inválida, sem crédito ou sem acesso ao modelo não são falhas
+    // passageiras — devolvemos 501 para o front desligar a nuvem de uma vez,
+    // em vez de pagar o round-trip de novo em cada cartão.
+    if (res.status === 401 || res.status === 403 || res.status === 404) {
+      return text('Voz neural indisponível para esta chave.', 501)
+    }
+    if (res.status === 429 && (await isQuotaExhausted(res))) {
+      return text('Sem créditos na conta de voz neural.', 501)
+    }
     if (!res.ok) return text('O serviço de áudio recusou a requisição.', 502)
 
     return new Response(res.body, {
@@ -46,6 +58,23 @@ export default async function handler(req: Request): Promise<Response> {
     })
   } catch {
     return text('Não foi possível falar com o serviço de áudio.', 502)
+  }
+}
+
+/**
+ * A OpenAI usa 429 tanto para "muitas requisições agora" (passageiro) quanto
+ * para "acabaram os créditos" (não passa sozinho). Só o segundo justifica
+ * desligar a nuvem.
+ */
+async function isQuotaExhausted(res: Response): Promise<boolean> {
+  try {
+    const body = (await res.json()) as { error?: { type?: string; code?: string } }
+    return (
+      body.error?.type === 'insufficient_quota' ||
+      body.error?.code === 'credit_balance_exhausted'
+    )
+  } catch {
+    return false
   }
 }
 

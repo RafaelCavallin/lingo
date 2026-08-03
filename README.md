@@ -15,7 +15,8 @@ Diferente de um flashcard tradicional, o Lingo trata cada cartão como uma frase
 - **Cloze por seleção** — selecione um trecho e oculte-o; o áudio sempre toca a frase completa.
 - **Importação de baralhos do Anki** (`.apkg`) com mapeamento de campos e prévia — traz o conteúdo, não o histórico.
 - **Progresso** — retenção de 30 dias, sequência de dias, previsão de carga futura e heatmap de constância.
-- **Sincronização entre aparelhos** por snapshot, sem conta nem login, com merge que não perde revisões.
+- **Múltiplos baralhos**, com troca rápida, e exclusão de cartões e baralhos.
+- **Conta opcional** (email e senha) — sincroniza baralhos, cartões e histórico entre aparelhos via Supabase (Postgres + RLS); sem conta, o app funciona 100% offline igual antes.
 - **Otimizador do FSRS** rodando em Web Worker (wasm) sobre o seu próprio histórico.
 - **Voz neural opcional** (TTS em nuvem) com MP3 em cache local; sem chave configurada, usa a voz do navegador.
 
@@ -64,16 +65,20 @@ src/
     ankiImport.ts  Leitura de .apkg (JSZip + sql.js)
     recorder.ts    Gravação e reprodução da própria voz
     stats.ts       Retenção, sequência, carga futura
-    sync.ts        Snapshot, merge e envio entre aparelhos
+    sync.ts        Pull/push incremental contra o Postgres, LWW por linha
+    auth.ts        Conta, adoção de dados locais ao entrar/cadastrar
+    supabase.ts    Cliente Supabase sob import dinâmico (só quem usa conta baixa)
     optimizer.ts   Preparo do histórico e chamada do worker
-  screens/         Home, Review, AddCard, Import, Progress, Settings
-  components/      Waveform, ClozeEditor, VoiceCompare, Heatmap
+  contexts/        DeckContext (baralho ativo) e AuthContext (sessão, sync)
+  screens/         Home, Review, AddCard, Import, Cards, Progress, Settings, Account
+  components/      Waveform, ClozeEditor, VoiceCompare, Heatmap, DeckSwitcher
   workers/         optimizer.worker.ts (fsrs-browser em wasm)
 api/
   enrich.ts               LLM → { translation, hints[] } em JSON
   _lib/enrichProviders.ts Provedores de LLM (Anthropic, Gemini) atrás de interface comum
   tts.ts                  Voz neural en-US → MP3
-  sync.ts                 Snapshot em KV, indexado pelo hash da frase-chave
+supabase/
+  migrations/             Schema, RLS e a RPC sync_push (decks, cards, review_logs)
 ```
 
 ## Atalhos de teclado

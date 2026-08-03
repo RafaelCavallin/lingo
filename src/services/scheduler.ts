@@ -1,5 +1,5 @@
 import { fsrs, generatorParameters, createEmptyCard, Rating, State } from 'ts-fsrs'
-import { db, uid, type Card, type Deck, type ReviewLog } from './db'
+import { db, liveCards, uid, type Card, type Deck, type ReviewLog } from './db'
 
 let f = fsrs(generatorParameters({ request_retention: 0.9, enable_fuzz: true }))
 
@@ -37,6 +37,8 @@ export function newCard(deckId: string, sentence: string, translation: string, h
     state: empty.state,
     createdAt: Date.now(),
     updatedAt: Date.now(),
+    deletedAt: 0,
+    dirty: 1,
   }
 }
 
@@ -65,11 +67,13 @@ export async function answer(card: Card, rating: BinaryRating, durationMs: numbe
   const log: ReviewLog = {
     id: uid(),
     cardId: card.id,
+    deckId: card.deckId,
     rating,
     reviewedAt: now.getTime(),
     stateBefore: card.state,
     scheduledDays: next.scheduled_days,
     durationMs,
+    dirty: 1,
   }
 
   await db.transaction('rw', db.cards, db.reviewLogs, async () => {
@@ -89,6 +93,14 @@ export async function answer(card: Card, rating: BinaryRating, durationMs: numbe
   })
 }
 
+/** Contagem crua de vencidos, para o seletor de baralhos — sem os limites de sessão do buildQueue. */
+export async function dueCount(deckId: string): Promise<number> {
+  const now = Date.now()
+  return liveCards(deckId)
+    .filter((c) => c.state !== State.New && c.due <= now)
+    .count()
+}
+
 /** Cartões "young": ainda não consolidados. Base do limite inteligente. */
 function isYoung(c: Card): boolean {
   if (c.state === State.Learning || c.state === State.Relearning) return true
@@ -100,7 +112,7 @@ function isYoung(c: Card): boolean {
  * os anteriores são consolidados (equivalente nativo ao "Limit New by Young").
  */
 export async function buildQueue(deck: Deck): Promise<Card[]> {
-  const all = await db.cards.where('deckId').equals(deck.id).toArray()
+  const all = await liveCards(deck.id).toArray()
   const now = Date.now()
 
   const due = all
@@ -130,7 +142,7 @@ async function countIntroducedToday(deckId: string): Promise<number> {
   if (firstReviews.length === 0) return 0
   const ids = new Set(firstReviews.map((l) => l.cardId))
   const cards = await db.cards.bulkGet([...ids])
-  return cards.filter((c) => c && c.deckId === deckId).length
+  return cards.filter((c) => c && c.deckId === deckId && c.deletedAt === 0).length
 }
 
 /** Distribui os novos ao longo da sessão em vez de empilhá-los no fim. */

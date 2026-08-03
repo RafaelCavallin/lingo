@@ -1,5 +1,5 @@
 import { State } from 'ts-fsrs'
-import { db, type Deck } from './db'
+import { db, liveCards, type Deck } from './db'
 import { iso } from '../components/Heatmap'
 
 export interface Stats {
@@ -18,7 +18,7 @@ const DAY = 86_400_000
 export async function computeStats(deck: Deck): Promise<Stats> {
   const [logs, cards] = await Promise.all([
     db.reviewLogs.toArray(),
-    db.cards.where('deckId').equals(deck.id).toArray(),
+    liveCards(deck.id).toArray(),
   ])
 
   const byDay = new Map<string, number>()

@@ -75,6 +75,7 @@ export const cloudTts: SpeechProvider = {
   async speak(cardId, text, rate) {
     const blob = await getOrFetch(cardId, text)
     const a = audioEl()
+    if (a.src.startsWith('blob:')) URL.revokeObjectURL(a.src)
     a.src = URL.createObjectURL(blob)
     // Mantém o timbre ao reduzir a velocidade, em vez de gerar um segundo áudio.
     ;(a as HTMLAudioElement & { preservesPitch?: boolean }).preservesPitch = true
@@ -90,7 +91,26 @@ export const cloudTts: SpeechProvider = {
   },
 }
 
-async function getOrFetch(cardId: string, text: string): Promise<Blob> {
+/**
+ * Uma frase só é buscada uma vez, mesmo que o pré-carregamento do cartão
+ * seguinte e o play do cartão atual peçam o mesmo áudio ao mesmo tempo.
+ */
+const inflight = new Map<string, Promise<Blob>>()
+
+/** Depois disso a espera já atrapalha mais do que a voz neural ajuda. */
+const FETCH_TIMEOUT_MS = 8_000
+
+function getOrFetch(cardId: string, text: string): Promise<Blob> {
+  const key = `${cardId}|${currentVoice}`
+  const pending = inflight.get(key)
+  if (pending) return pending
+
+  const job = fetchAudio(cardId, text).finally(() => inflight.delete(key))
+  inflight.set(key, job)
+  return job
+}
+
+async function fetchAudio(cardId: string, text: string): Promise<Blob> {
   const cached = await db.audioBlobs
     .where({ cardId, kind: 'tts' })
     .filter((b) => (b.voice ?? DEFAULT_VOICE) === currentVoice)
@@ -103,6 +123,7 @@ async function getOrFetch(cardId: string, text: string): Promise<Blob> {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text, voice: currentVoice }),
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     })
   } catch {
     throw new TtsUnavailable('O serviço de áudio não respondeu.')
@@ -112,6 +133,12 @@ async function getOrFetch(cardId: string, text: string): Promise<Blob> {
   if (!res.ok) throw new TtsUnavailable('O serviço de áudio não respondeu.')
 
   const blob = await res.blob()
+  // Sem `/api` no ar (dev sem `vercel dev`) a rota devolve o index.html com 200:
+  // sem esta checagem viraria um erro de decodificação no elemento <audio>.
+  if (!blob.type.startsWith('audio/')) {
+    throw new TtsUnavailable('Voz neural não configurada.', true)
+  }
+
   // Pré-escuta no cadastro não gera lixo permanente.
   if (cardId !== 'preview') {
     await db.audioBlobs.add({
@@ -127,40 +154,62 @@ async function getOrFetch(cardId: string, text: string): Promise<Blob> {
 }
 
 let cloudDisabledForSession = false
+/**
+ * Falha passageira não pode custar um round-trip perdido em cada cartão: depois
+ * de duas seguidas a nuvem sai do caminho por um minuto e a voz do navegador
+ * responde na hora. Um sucesso zera a contagem.
+ */
+let consecutiveFailures = 0
+let cloudPausedUntil = 0
+const FAILURES_BEFORE_PAUSE = 2
+const PAUSE_MS = 60_000
+
+const cloudUsable = () => !cloudDisabledForSession && Date.now() >= cloudPausedUntil
+
+function noteFailure(e: unknown) {
+  if (!(e instanceof TtsUnavailable)) return false
+  if (e.permanent) cloudDisabledForSession = true
+  else if (++consecutiveFailures >= FAILURES_BEFORE_PAUSE) {
+    cloudPausedUntil = Date.now() + PAUSE_MS
+    consecutiveFailures = 0
+  }
+  return true
+}
 
 /** Provider ativo, resolvido sozinho. A UI não precisa saber qual é. */
 export const speech: SpeechProvider = {
   get id() {
-    return cloudDisabledForSession ? ('webspeech' as const) : ('cloud' as const)
+    return cloudUsable() ? ('cloud' as const) : ('webspeech' as const)
   },
   stop() {
     webSpeech.stop()
     cloudTts.stop()
   },
   async warm(cardId, text) {
-    if (cloudDisabledForSession) return
+    if (!cloudUsable()) return
+    // Pré-carregamento é oportunista: falhar aqui nunca vira erro na tela.
     try {
       await cloudTts.warm(cardId, text)
+      consecutiveFailures = 0
     } catch (e) {
-      if (e instanceof TtsUnavailable && e.permanent) cloudDisabledForSession = true
+      noteFailure(e)
     }
   },
   async speak(cardId, text, rate) {
-    if (!cloudDisabledForSession) {
+    if (cloudUsable()) {
       try {
         await cloudTts.speak(cardId, text, rate)
+        consecutiveFailures = 0
         return
       } catch (e) {
-        if (e instanceof TtsUnavailable) {
-          if (e.permanent) cloudDisabledForSession = true
-        } else throw e
+        if (!noteFailure(e)) throw e
       }
     }
     await webSpeech.speak(cardId, text, rate)
   },
 }
 
-export const usingNeuralVoice = () => !cloudDisabledForSession
+export const usingNeuralVoice = () => cloudUsable()
 
 let currentRate = DEFAULT_RATE
 

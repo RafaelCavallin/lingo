@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { Card, Deck } from '../services/db'
+import { deleteCard, type Card, type Deck } from '../services/db'
 import { answer, buildQueue } from '../services/scheduler'
 import { speech, normalRate, slowRate } from '../services/audio'
 import { Waveform } from '../components/Waveform'
 import { renderCloze } from '../components/ClozeEditor'
 import { VoiceCompare } from '../components/VoiceCompare'
+
+/** Fundo suficiente para cobrir a resposta mais rápida sem baixar a fila toda. */
+const PREFETCH_AHEAD = 2
 
 export function Review({ deck, onDone }: { deck: Deck; onDone: () => void }) {
   const [queue, setQueue] = useState<Card[] | null>(null)
@@ -47,6 +50,15 @@ export function Review({ deck, onDone }: { deck: Deck; onDone: () => void }) {
     return () => speech.stop()
   }, [card, play])
 
+  // Enquanto o cartão atual toca, os próximos já vão sendo baixados: quando o
+  // usuário responde, o áudio seguinte sai do IndexedDB e começa na hora.
+  useEffect(() => {
+    if (!queue) return
+    for (const next of queue.slice(index + 1, index + 1 + PREFETCH_AHEAD)) {
+      void speech.warm(next.id, next.sentence)
+    }
+  }, [queue, index])
+
   async function rate(rating: 'again' | 'good') {
     if (!card) return
     await answer(card, rating, Date.now() - shownAt.current)
@@ -54,6 +66,18 @@ export function Review({ deck, onDone }: { deck: Deck; onDone: () => void }) {
     // Ao errar, o áudio toca de novo com a resposta à vista antes de seguir.
     if (rating === 'again') await play(normalRate())
     setIndex((i) => i + 1)
+  }
+
+  // Tirar da fila em vez de avançar o índice: com um item a menos, o índice
+  // atual já aponta para o próximo cartão, e o efeito de troca de card cuida
+  // de tocar o áudio dele sozinho.
+  async function remove() {
+    if (!card) return
+    if (!confirm('Excluir esta frase? Não tem como desfazer.')) return
+    speech.stop()
+    const id = card.id
+    await deleteCard(id)
+    setQueue((q) => q?.filter((c) => c.id !== id) ?? q)
   }
 
   useEffect(() => {
@@ -123,9 +147,15 @@ export function Review({ deck, onDone }: { deck: Deck; onDone: () => void }) {
           </p>
         )}
 
-        <div className="mt-6 flex flex-wrap gap-2">
+        <div className="mt-6 flex flex-wrap items-center gap-2">
           <AudioButton onClick={() => play(normalRate())} label="Repetir" />
           <AudioButton onClick={() => play(slowRate())} label="Devagar" />
+          <button
+            onClick={remove}
+            className="ml-auto rounded-full border border-line px-4 py-2 font-mono text-xs uppercase tracking-wider text-muted transition hover:border-miss hover:text-miss"
+          >
+            Excluir
+          </button>
         </div>
 
         <div className="mt-3">

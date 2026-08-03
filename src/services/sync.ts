@@ -1,120 +1,255 @@
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { db, type Card, type Deck, type ReviewLog } from './db'
+import { getBoundUserId } from './auth'
+import { getSupabase, isSyncConfigured } from './supabase'
+import {
+  parseCardRow,
+  parseDeckRow,
+  parseReviewLogRow,
+  toCardRow,
+  toDeckRow,
+  toLogRow,
+  type Parsed,
+} from './syncRows'
 
 /**
- * Sincronização entre dispositivos por snapshot.
- *
- * O volume aqui é pequeno (frases e logs de revisão, sem áudio), então trocar o
- * estado inteiro é mais simples e mais robusto que um protocolo incremental —
- * e não exige servidor com banco relacional, só um par chave/valor.
- *
- * O que NÃO sobe: os blobs de áudio. Narração é regenerada pelo TTS no outro
- * aparelho, e gravações de voz são locais por natureza. Isso mantém o payload
- * na casa de dezenas de KB.
+ * Sincronização por tabelas reais no Postgres, com RLS por usuário —
+ * substitui o antigo par chave/valor no Redis. Pull antes de push: o LWW
+ * local já descarta os perdedores antes de decidir o que subir.
  */
 
-const KEY_STORAGE = 'lingo.syncKey'
-const LAST_SYNC = 'lingo.lastSync'
+const LAST_SYNC_KEY = 'lingo.lastSync'
+export const lastSyncAt = () => Number(localStorage.getItem(LAST_SYNC_KEY)) || 0
 
-export interface Snapshot {
-  version: 2
-  decks: Deck[]
-  cards: Card[]
-  reviewLogs: ReviewLog[]
-}
+const PULL_PAGE = 500
+const PUSH_CHUNK = 200
+/** Absorve a janela entre o início e o commit de uma transação remota — sem
+ *  isto, uma linha commitada um instante depois do início do pull sumiria
+ *  para sempre. Reprocessar meia dúzia de linhas de novo é grátis: o apply é
+ *  idempotente. */
+const OVERLAP_MS = 5_000
 
-export interface SyncResult {
-  pulled: number
-  pushed: number
-  at: number
-}
+export type SyncReason = 'manual' | 'signin' | 'online' | 'boot' | 'session-end'
 
-export class SyncNotConfigured extends Error {}
-
-export const syncKey = () => localStorage.getItem(KEY_STORAGE) ?? ''
-export const setSyncKey = (k: string) => localStorage.setItem(KEY_STORAGE, k.trim())
-export const lastSyncAt = () => Number(localStorage.getItem(LAST_SYNC)) || 0
-
-async function localSnapshot(): Promise<Snapshot> {
-  const [decks, cards, reviewLogs] = await Promise.all([
-    db.decks.toArray(),
-    db.cards.toArray(),
-    db.reviewLogs.toArray(),
-  ])
-  return { version: 2, decks, cards, reviewLogs }
-}
+export type SyncOutcome =
+  | { status: 'ok'; pulled: number; pushed: number; at: number }
+  | { status: 'offline' }
+  | { status: 'signed-out' }
+  | { status: 'disabled' }
+  | { status: 'error'; message: string }
 
 /**
- * Regras de merge:
- *  - reviewLogs são imutáveis e têm id próprio: união simples, sem conflito possível.
- *  - cards e decks: vence quem tem `updatedAt` maior (last-write-wins).
- *  - remoção é marcada com `deletedAt` em vez de sumir, senão o outro aparelho
- *    reintroduziria o cartão apagado no próximo sync.
+ * Mutex entre abas: duas abas do PWA sincronizando ao mesmo tempo
+ * intercalariam applies e limpariam a flag `dirty` uma da outra.
  */
-export function merge(local: Snapshot, remote: Snapshot): { merged: Snapshot; pulled: number } {
-  const logs = new Map<string, ReviewLog>()
-  for (const l of [...remote.reviewLogs, ...local.reviewLogs]) logs.set(l.id, l)
-
-  const pulledIds = new Set(
-    remote.reviewLogs.filter((l) => !local.reviewLogs.some((x) => x.id === l.id)).map((l) => l.id),
+export async function syncNow(reason: SyncReason): Promise<SyncOutcome> {
+  if (!isSyncConfigured()) return { status: 'disabled' }
+  if (!('locks' in navigator)) return runSync(reason)
+  const result = await navigator.locks.request('lingo-sync', { ifAvailable: true }, (lock) =>
+    lock ? runSync(reason) : Promise.resolve<SyncOutcome>({ status: 'ok', pulled: 0, pushed: 0, at: Date.now() }),
   )
+  return result
+}
 
-  return {
-    merged: {
-      version: 2,
-      decks: mergeByUpdatedAt(local.decks, remote.decks),
-      cards: mergeByUpdatedAt(local.cards, remote.cards),
-      reviewLogs: [...logs.values()].sort((a, b) => a.reviewedAt - b.reviewedAt),
-    },
-    pulled: pulledIds.size,
+async function runSync(_reason: SyncReason): Promise<SyncOutcome> {
+  const bound = await getBoundUserId()
+  if (!bound) return { status: 'signed-out' }
+
+  let supabase: SupabaseClient
+  try {
+    supabase = await getSupabase()
+  } catch {
+    return { status: 'disabled' }
+  }
+
+  let session
+  try {
+    const { data } = await supabase.auth.getSession()
+    session = data.session
+  } catch {
+    return { status: 'offline' }
+  }
+  if (!session) return { status: 'signed-out' }
+  if (session.user.id !== bound) {
+    return { status: 'error', message: 'A sessão atual não é a conta vinculada a este aparelho.' }
+  }
+
+  try {
+    let pulled = 0
+    pulled += await pullTable(supabase, 'decks', 'cursor:decks', applyDecks)
+    pulled += await pullTable(supabase, 'cards', 'cursor:cards', applyCards)
+    pulled += await pullTable(supabase, 'review_logs', 'cursor:reviewLogs', applyReviewLogs)
+    const pushed = await pushDirty(supabase)
+    const at = Date.now()
+    localStorage.setItem(LAST_SYNC_KEY, String(at))
+    return { status: 'ok', pulled, pushed, at }
+  } catch (e) {
+    if (isNetworkError(e)) return { status: 'offline' }
+    return { status: 'error', message: e instanceof Error ? e.message : 'A sincronização falhou.' }
   }
 }
 
-function mergeByUpdatedAt<T extends { id: string; updatedAt: number }>(local: T[], remote: T[]): T[] {
-  const out = new Map<string, T>()
-  for (const item of local) out.set(item.id, item)
-  for (const item of remote) {
-    const mine = out.get(item.id)
-    if (!mine || item.updatedAt > mine.updatedAt) out.set(item.id, item)
+function isNetworkError(e: unknown): boolean {
+  return e instanceof TypeError || (e instanceof Error && /fetch|network/i.test(e.message))
+}
+
+// ---------- pull ----------
+
+/**
+ * Keyset em `synced_at`, não offset: outro aparelho escrevendo entre páginas
+ * faria uma paginação por offset pular linhas. O cursor só avança dentro da
+ * mesma transação Dexie que aplica as linhas (ver applyX abaixo) — um crash
+ * no meio replica a página, nunca a pula.
+ */
+async function pullTable(
+  supabase: SupabaseClient,
+  table: 'decks' | 'cards' | 'review_logs',
+  cursorKey: string,
+  apply: (rows: unknown[], cursorKey: string) => Promise<number>,
+): Promise<number> {
+  const stored = await db.syncState.get(cursorKey)
+  let from = stored?.value
+    ? new Date(Date.parse(String(stored.value)) - OVERLAP_MS).toISOString()
+    : '1970-01-01T00:00:00Z'
+  let total = 0
+
+  for (;;) {
+    const { data, error } = await supabase
+      .from(table)
+      .select('*')
+      .gt('synced_at', from)
+      .order('synced_at', { ascending: true })
+      .limit(PULL_PAGE)
+    if (error) throw error
+    const rows = data ?? []
+    if (rows.length === 0) break
+
+    // O overlap de 5s faz toda sincronização reprocessar as últimas linhas
+    // já conhecidas — inofensivo (idempotente), mas `apply` devolve só quem
+    // de fato mudou algo localmente, pra "3 registros vieram" não aparecer
+    // toda vez que nada realmente mudou.
+    total += await apply(rows, cursorKey)
+    from = (rows[rows.length - 1] as { synced_at: string }).synced_at
+    if (rows.length < PULL_PAGE) break
   }
-  return [...out.values()]
+  return total
 }
 
-export async function sync(): Promise<SyncResult> {
-  const key = syncKey()
-  if (!key) throw new SyncNotConfigured('Defina uma frase-chave de sincronização nos ajustes.')
-
-  const local = await localSnapshot()
-  console.log('[sync] local:', { decks: local.decks.length, cards: local.cards.length, reviewLogs: local.reviewLogs.length })
-
-  const pull = await fetch(`/api/sync?key=${encodeURIComponent(key)}`)
-  console.log('[sync] pull status:', pull.status)
-  if (pull.status === 501) throw new SyncNotConfigured('Sincronização não configurada no servidor.')
-  if (!pull.ok && pull.status !== 404) throw new Error('Não foi possível baixar os dados remotos.')
-
-  const remote: Snapshot =
-    pull.status === 404 ? { version: 2, decks: [], cards: [], reviewLogs: [] } : await pull.json()
-  console.log('[sync] remote:', { decks: remote.decks.length, cards: remote.cards.length, reviewLogs: remote.reviewLogs.length })
-
-  const { merged, pulled } = merge(local, remote)
-  console.log('[sync] merged:', { decks: merged.decks.length, cards: merged.cards.length, reviewLogs: merged.reviewLogs.length, pulled })
-
-  await db.transaction('rw', db.decks, db.cards, db.reviewLogs, async () => {
-    await db.decks.bulkPut(merged.decks)
-    await db.cards.bulkPut(merged.cards)
-    await db.reviewLogs.bulkPut(merged.reviewLogs)
-  })
-  console.log('[sync] local db updated')
-
-  const push = await fetch(`/api/sync?key=${encodeURIComponent(key)}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(merged),
-  })
-  console.log('[sync] push status:', push.status)
-  if (!push.ok) throw new Error('Os dados locais foram atualizados, mas o envio falhou.')
-
-  const at = Date.now()
-  localStorage.setItem(LAST_SYNC, String(at))
-  console.log('[sync] done at', new Date(at).toISOString())
-  return { pulled, pushed: merged.cards.length + merged.reviewLogs.length, at }
+function keepParsed<T>(items: (Parsed<T> | null)[]): Parsed<T>[] {
+  return items.filter((x): x is Parsed<T> => x !== null)
 }
+
+/** Desempate determinístico por id quando `updatedAt` empata — sem isto, dois
+ *  aparelhos editando no mesmo milissegundo nunca convergem: cada um rejeita
+ *  o outro como "não mais novo". */
+function wins(remote: { id: string; updatedAt: number }, local: { id: string; updatedAt: number } | undefined) {
+  if (!local) return true
+  if (remote.updatedAt !== local.updatedAt) return remote.updatedAt > local.updatedAt
+  return remote.id > local.id
+}
+
+async function applyDecks(rows: unknown[], cursorKey: string): Promise<number> {
+  const parsed = keepParsed(rows.map(parseDeckRow))
+  if (parsed.length === 0) return 0
+  return db.transaction('rw', db.decks, db.syncState, async () => {
+    const locals = await db.decks.bulkGet(parsed.map((p) => p.row.id))
+    const winners = parsed.filter((p, i) => wins(p.row, locals[i]))
+    if (winners.length) await db.decks.bulkPut(winners.map((w) => w.row))
+    await db.syncState.put({ key: cursorKey, value: parsed[parsed.length - 1].syncedAt })
+    return winners.length
+  })
+}
+
+async function applyCards(rows: unknown[], cursorKey: string): Promise<number> {
+  const parsed = keepParsed(rows.map(parseCardRow))
+  if (parsed.length === 0) return 0
+  return db.transaction('rw', db.cards, db.syncState, async () => {
+    const locals = await db.cards.bulkGet(parsed.map((p) => p.row.id))
+    const winners = parsed.filter((p, i) => wins(p.row, locals[i]))
+    if (winners.length) await db.cards.bulkPut(winners.map((w) => w.row))
+    await db.syncState.put({ key: cursorKey, value: parsed[parsed.length - 1].syncedAt })
+    return winners.length
+  })
+}
+
+/** Imutáveis: união por id, nunca sobrescreve uma linha já presente. */
+async function applyReviewLogs(rows: unknown[], cursorKey: string): Promise<number> {
+  const parsed = keepParsed(rows.map(parseReviewLogRow))
+  if (parsed.length === 0) return 0
+  return db.transaction('rw', db.reviewLogs, db.syncState, async () => {
+    const locals = await db.reviewLogs.bulkGet(parsed.map((p) => p.row.id))
+    const fresh = parsed.filter((_, i) => !locals[i])
+    if (fresh.length) await db.reviewLogs.bulkAdd(fresh.map((f) => f.row))
+    await db.syncState.put({ key: cursorKey, value: parsed[parsed.length - 1].syncedAt })
+    return fresh.length
+  })
+}
+
+// ---------- push ----------
+
+/**
+ * `sync_push` é uma RPC transacional (decks → cards → logs numa transação só,
+ * com `where excluded.updated_at > t.updated_at` no servidor) — um `.upsert()`
+ * comum do PostgREST não tem `WHERE` e sobrescreveria cegamente o que outro
+ * aparelho tiver escrito de mais novo entre o pull e o push.
+ */
+async function pushDirty(supabase: SupabaseClient): Promise<number> {
+  const [decks, cards, logs] = await Promise.all([
+    db.decks.filter((d) => d.dirty === 1).toArray(),
+    db.cards.filter((c) => c.dirty === 1).toArray(),
+    db.reviewLogs.filter((l) => l.dirty === 1).toArray(),
+  ])
+  if (decks.length === 0 && cards.length === 0 && logs.length === 0) return 0
+
+  const cardChunks = chunk(cards, PUSH_CHUNK)
+  const logChunks = chunk(logs, PUSH_CHUNK)
+  const rounds = Math.max(1, cardChunks.length, logChunks.length)
+  let pushed = 0
+  let sentDecks = false
+
+  for (let i = 0; i < rounds; i++) {
+    const cChunk = cardChunks[i] ?? []
+    const lChunk = logChunks[i] ?? []
+    const { error } = await supabase.rpc('sync_push', {
+      p_decks: sentDecks ? [] : decks.map(toDeckRow),
+      p_cards: cChunk.map(toCardRow),
+      p_logs: lChunk.map(toLogRow),
+    })
+    if (error) throw error
+    sentDecks = true
+    await clearDirty(db.cards, cChunk)
+    // Logs são imutáveis — nada pode tê-los editado em trânsito, então a
+    // flag é limpa direto, sem o compare-and-swap usado em decks/cards.
+    if (lChunk.length) await db.reviewLogs.bulkUpdate(lChunk.map((l) => ({ key: l.id, changes: { dirty: 0 } })))
+    pushed += cChunk.length + lChunk.length
+  }
+  if (decks.length) {
+    await clearDirty(db.decks, decks)
+    pushed += decks.length
+  }
+  return pushed
+}
+
+function chunk<T>(arr: T[], size: number): T[][] {
+  const out: T[][] = []
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size))
+  return out
+}
+
+/**
+ * Compare-and-swap no `updatedAt`: se o usuário editou o registro durante o
+ * próprio push (ex.: avaliou o card enquanto ele estava em trânsito), a
+ * edição fica presa em `dirty: 1` em vez de ser silenciosamente perdida —
+ * sobe no próximo ciclo.
+ */
+async function clearDirty<T extends { id: string; updatedAt: number }>(
+  table: { bulkGet: (ids: string[]) => Promise<(T | undefined)[]>; update: (id: string, changes: object) => Promise<number> },
+  sent: T[],
+): Promise<void> {
+  if (sent.length === 0) return
+  const now = await table.bulkGet(sent.map((r) => r.id))
+  const stillUnchanged = sent.filter((r, i) => now[i] && now[i]!.updatedAt === r.updatedAt)
+  for (const r of stillUnchanged) await table.update(r.id, { dirty: 0 })
+}
+
+export type { Deck, Card, ReviewLog }

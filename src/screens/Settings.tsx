@@ -1,16 +1,25 @@
 import { useEffect, useState } from 'react'
 import { db, MAX_RATE, MIN_RATE, VOICES, type Deck } from '../services/db'
 import { setVoice, setSpeechRate, speech, normalRate, usingNeuralVoice } from '../services/audio'
-import { lastSyncAt, setSyncKey, sync, syncKey, SyncNotConfigured } from '../services/sync'
+import { lastSyncAt, syncNow } from '../services/sync'
+import { useAuth } from '../contexts/AuthContext'
 import { MIN_REVIEWS, NotEnoughData, optimize, reviewCount } from '../services/optimizer'
 
 const SAMPLE = 'This is how your sentences will sound.'
 
-export function Settings({ deck, onBack }: { deck: Deck; onBack: () => void }) {
+export function Settings({
+  deck,
+  onBack,
+  onAccount,
+}: {
+  deck: Deck
+  onBack: () => void
+  onAccount: () => void
+}) {
+  const { configured: syncConfigured, session } = useAuth()
   const [voice, setLocalVoice] = useState(deck.voice)
   const [rate, setRate] = useState(deck.speechRate)
   const [listenFirst, setListenFirst] = useState(deck.listenFirst)
-  const [key, setKey] = useState(syncKey())
   const [syncState, setSyncState] = useState<{ busy: boolean; message: string | null; tone: 'ok' | 'bad' | null }>({
     busy: false,
     message: null,
@@ -25,9 +34,9 @@ export function Settings({ deck, onBack }: { deck: Deck; onBack: () => void }) {
   })
 
   useEffect(() => {
-    reviewCount().then(setReviews)
+    reviewCount(deck.id).then(setReviews)
     speech.warm('preview', SAMPLE).finally(() => setNeuralVoice(usingNeuralVoice()))
-  }, [])
+  }, [deck.id])
 
   async function playSample(rate: number) {
     await speech.speak('preview', SAMPLE, rate)
@@ -55,29 +64,25 @@ export function Settings({ deck, onBack }: { deck: Deck; onBack: () => void }) {
 
   async function runSync() {
     setSyncState({ busy: true, message: null, tone: null })
-    setSyncKey(key)
-    try {
-      const r = await sync()
+    const r = await syncNow('manual')
+    if (r.status === 'ok') {
       setSyncState({
         busy: false,
         tone: 'ok',
         message:
           r.pulled > 0
-            ? `Sincronizado. ${r.pulled} ${r.pulled === 1 ? 'revisão veio' : 'revisões vieram'} do outro aparelho.`
+            ? `Sincronizado. ${r.pulled} ${r.pulled === 1 ? 'registro veio' : 'registros vieram'} de outro aparelho.`
             : 'Sincronizado. Nada de novo do outro lado.',
       })
-    } catch (e) {
-      setSyncState({
-        busy: false,
-        tone: 'bad',
-        message:
-          e instanceof SyncNotConfigured
-            ? e.message
-            : e instanceof Error
-              ? e.message
-              : 'A sincronização falhou.',
-      })
+      return
     }
+    const message = {
+      offline: 'Sem conexão com o servidor de sincronização agora — tente de novo em instantes.',
+      'signed-out': 'Entre na sua conta para sincronizar.',
+      disabled: 'Sincronização não configurada neste servidor.',
+      error: r.status === 'error' ? r.message : 'A sincronização falhou.',
+    }[r.status]
+    setSyncState({ busy: false, tone: 'bad', message })
   }
 
   async function runOptimize() {
@@ -184,35 +189,46 @@ export function Settings({ deck, onBack }: { deck: Deck; onBack: () => void }) {
           />
         </Section>
 
-        <Section title="Sincronizar aparelhos">
-          <p className="text-sm text-muted">
-            Use a mesma frase-chave nos dois aparelhos. Ela não sai daqui: o servidor guarda apenas
-            o hash. Frases, dicas e histórico sobem; áudio não — a narração é regenerada do outro lado.
-          </p>
-          <input
-            value={key}
-            onChange={(e) => setKey(e.target.value)}
-            type="password"
-            autoComplete="off"
-            placeholder="frase-chave com pelo menos 8 caracteres"
-            className="mt-4 w-full rounded-xl border border-line bg-surface px-4 py-3 font-mono text-sm outline-none placeholder:text-muted/40 focus:border-signal"
-          />
-          <div className="mt-3 flex flex-wrap items-center gap-4">
-            <button
-              onClick={runSync}
-              disabled={syncState.busy || key.trim().length < 8}
-              className="rounded-full bg-signal px-5 py-2.5 text-sm font-medium text-ink transition hover:brightness-110 disabled:bg-surface disabled:text-muted"
-            >
-              {syncState.busy ? 'Sincronizando…' : 'Sincronizar agora'}
-            </button>
-            {lastSyncAt() > 0 && (
-              <span className="font-mono text-xs text-muted">
-                última vez: {new Date(lastSyncAt()).toLocaleString('pt-BR')}
-              </span>
+        {syncConfigured && (
+          <Section title="Conta e sincronização">
+            <p className="text-sm text-muted">
+              Criar uma conta é opcional — o app continua funcionando normalmente sem ela. É o que
+              passa a habilitar a sincronização entre aparelhos.
+            </p>
+            {session ? (
+              <>
+                <p className="mt-4 text-sm text-text/90">
+                  Conectado como <span className="text-signal">{session.user.email}</span>.
+                </p>
+                <div className="mt-3 flex flex-wrap items-center gap-4">
+                  <button
+                    onClick={runSync}
+                    disabled={syncState.busy}
+                    className="rounded-full bg-signal px-5 py-2.5 text-sm font-medium text-ink transition hover:brightness-110 disabled:bg-surface disabled:text-muted"
+                  >
+                    {syncState.busy ? 'Sincronizando…' : 'Sincronizar agora'}
+                  </button>
+                  {lastSyncAt() > 0 && (
+                    <span className="font-mono text-xs text-muted">
+                      última vez: {new Date(lastSyncAt()).toLocaleString('pt-BR')}
+                    </span>
+                  )}
+                </div>
+                <Message state={syncState} />
+                <button onClick={onAccount} className="mt-4 text-sm text-muted hover:text-signal">
+                  Gerenciar conta
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={onAccount}
+                className="mt-4 rounded-full border border-line px-5 py-2.5 text-sm transition hover:border-signal hover:text-signal"
+              >
+                Entrar ou criar conta
+              </button>
             )}
-          </div>
-          <Message state={syncState} />
-        </Section>
+          </Section>
+        )}
 
         <Section title="Otimizar agendamento">
           <p className="text-sm text-muted">
