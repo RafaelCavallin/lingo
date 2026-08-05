@@ -19,7 +19,8 @@ interface DeckContextValue {
   deck: Deck | null
   decks: Deck[]
   switchDeck: (id: string) => void
-  createDeck: (name: string) => Promise<void>
+  /** Devolve o baralho criado — a importação precisa do id para gravar nele. */
+  createDeck: (name: string) => Promise<Deck>
   renameDeck: (id: string, name: string) => Promise<void>
   removeDeck: (id: string) => Promise<void>
 }
@@ -110,6 +111,7 @@ export function DeckProvider({ children }: { children: ReactNode }) {
     }
     await db.decks.add(newDeck)
     setActiveId(newDeck.id)
+    return newDeck
   }, [])
 
   const renameDeck = useCallback(async (id: string, name: string) => {

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { deleteCard, liveCards, type Card, type Deck } from '../services/db'
 
@@ -10,9 +10,13 @@ import { deleteCard, liveCards, type Card, type Deck } from '../services/db'
  */
 const ROW_STYLE = { contentVisibility: 'auto', containIntrinsicSize: '0 88px' } as const
 
+const PAGE_SIZE = 100
+
 export function Cards({ deck, onBack }: { deck: Deck; onBack: () => void }) {
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
+  const sentinelRef = useRef<HTMLLIElement>(null)
 
   const cards = useLiveQuery(() => liveCards(deck.id).reverse().sortBy('createdAt'), [deck.id])
 
@@ -24,6 +28,24 @@ export function Cards({ deck, onBack }: { deck: Deck; onBack: () => void }) {
       (c) => c.sentence.toLowerCase().includes(q) || c.translation.toLowerCase().includes(q),
     )
   }, [cards, query])
+
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE)
+  }, [query, deck.id])
+
+  const hasMore = !!filtered && visibleCount < filtered.length
+  const visible = filtered?.slice(0, visibleCount)
+
+  useEffect(() => {
+    if (!hasMore) return
+    const el = sentinelRef.current
+    if (!el) return
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0]?.isIntersecting) setVisibleCount((n) => n + PAGE_SIZE)
+    })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [hasMore])
 
   function toggle(id: string) {
     setSelected((s) => {
@@ -93,7 +115,7 @@ export function Cards({ deck, onBack }: { deck: Deck; onBack: () => void }) {
               {query ? 'Nenhum cartão bate com a busca.' : 'Este baralho ainda não tem cartões.'}
             </p>
           )}
-          {filtered?.map((c) => (
+          {visible?.map((c) => (
             <li key={c.id} style={ROW_STYLE} className="flex items-start gap-3 py-4">
               <input
                 type="checkbox"
@@ -115,6 +137,11 @@ export function Cards({ deck, onBack }: { deck: Deck; onBack: () => void }) {
               </button>
             </li>
           ))}
+          {hasMore && (
+            <li ref={sentinelRef} aria-hidden className="py-4 text-center text-xs text-muted">
+              Carregando mais…
+            </li>
+          )}
         </ul>
       </main>
     </div>

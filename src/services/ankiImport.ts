@@ -4,12 +4,16 @@ import wasmUrl from 'sql.js/dist/sql-wasm.wasm?url'
 
 export interface AnkiNote {
   fields: string[]
+  /** Baralho de origem no Anki; '' quando o arquivo não traz essa informação. */
+  deckName: string
 }
 
 export interface AnkiDeckFile {
   /** Nome dos campos do primeiro modelo encontrado, para o usuário mapear. */
   fieldNames: string[]
   notes: AnkiNote[]
+  /** Baralhos de origem presentes no arquivo, ordenados por nome. */
+  deckNames: string[]
 }
 
 /**
@@ -33,12 +37,16 @@ export async function readApkg(file: File): Promise<AnkiDeckFile> {
 
   try {
     const fieldNames = readFieldNames(db)
-    const res = db.exec('SELECT flds FROM notes')
+    const deckNames = readDeckNames(db)
+    const noteDecks = readNoteDecks(db)
+    const res = db.exec('SELECT id, flds FROM notes')
     const rows = res[0]?.values ?? []
 
     const notes = rows
-      .map((r) => String(r[0] ?? ''))
-      .map((flds) => ({ fields: flds.split('\u001f').map(stripHtml) }))
+      .map((r) => ({
+        fields: String(r[1] ?? '').split('\u001f').map(stripHtml),
+        deckName: deckNames.get(noteDecks.get(Number(r[0])) ?? 0) ?? '',
+      }))
       .filter((n) => n.fields.some((f) => f.length > 0))
 
     if (notes.length === 0) throw new Error('Nenhuma nota encontrada no arquivo.')
@@ -49,7 +57,13 @@ export async function readApkg(file: File): Promise<AnkiDeckFile> {
         ? fieldNames.slice(0, width)
         : Array.from({ length: width }, (_, i) => fieldNames[i] ?? `Campo ${i + 1}`)
 
-    return { fieldNames: names, notes }
+    // Só entram no filtro os baralhos que têm nota — uma coleção exportada
+    // inteira costuma trazer baralhos vazios que só poluiriam a lista.
+    const usedDecks = dedupe(notes.map((n) => n.deckName).filter(Boolean)).sort((a, b) =>
+      a.localeCompare(b, 'pt-BR'),
+    )
+
+    return { fieldNames: names, notes, deckNames: usedDecks }
   } finally {
     db.close()
   }
@@ -80,6 +94,61 @@ function readFieldNames(db: import('sql.js').Database): string[] {
   }
 
   return []
+}
+
+/**
+ * Nome de cada baralho da coleção. Serve só para o usuário filtrar o que quer
+ * importar — no Lingo tudo vai para o baralho ativo, não recriamos a hierarquia.
+ */
+function readDeckNames(db: import('sql.js').Database): Map<number, string> {
+  const names = new Map<number, string>()
+
+  // Anki novo: tabela decks, com \u001f separando os níveis de subbaralho.
+  try {
+    const res = db.exec('SELECT id, name FROM decks')
+    for (const r of res[0]?.values ?? []) {
+      names.set(Number(r[0]), String(r[1] ?? '').replace(/\u001f/g, '::'))
+    }
+    if (names.size) return names
+  } catch {
+    /* schema antigo */
+  }
+
+  // Anki antigo: JSON na coluna col.decks, já com '::' entre os níveis.
+  try {
+    const res = db.exec('SELECT decks FROM col')
+    const decks = JSON.parse(String(res[0]?.values[0][0] ?? '{}')) as Record<
+      string,
+      { name?: string }
+    >
+    for (const [id, deck] of Object.entries(decks)) {
+      if (deck?.name) names.set(Number(id), deck.name)
+    }
+  } catch {
+    /* sem metadados de baralho: o filtro simplesmente não aparece */
+  }
+
+  return names
+}
+
+/**
+ * Baralho de cada nota. Uma nota pode gerar vários cartões em baralhos
+ * diferentes; para filtrar basta o primeiro. `odid` guarda o baralho de origem
+ * quando o cartão está parado num baralho filtrado.
+ */
+function readNoteDecks(db: import('sql.js').Database): Map<number, number> {
+  const byNote = new Map<number, number>()
+  try {
+    const res = db.exec('SELECT nid, did, odid FROM cards')
+    for (const r of res[0]?.values ?? []) {
+      const nid = Number(r[0])
+      if (byNote.has(nid)) continue
+      byNote.set(nid, Number(r[2]) || Number(r[1]))
+    }
+  } catch {
+    /* sem tabela cards utilizável */
+  }
+  return byNote
 }
 
 const dedupe = (xs: string[]) => [...new Set(xs)]

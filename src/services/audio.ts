@@ -64,6 +64,16 @@ export function setVoice(voice: string) {
 }
 export const activeVoice = () => currentVoice
 
+/**
+ * Identifica qual chamada de speak() é a "dona" atual do <audio> compartilhado.
+ * Uma chamada mais nova troca o src por baixo de uma mais antiga (auto-play do
+ * cartão seguinte, "Repetir" clicado duas vezes, `stop()` no cleanup do efeito);
+ * isso rejeita a promise de play() ou dispara "pause"/"error" na antiga mesmo
+ * com o áudio já tendo tocado. Sem o token, esse encerramento benigno virava
+ * "Não foi possível reproduzir o áudio." na tela.
+ */
+let playToken = 0
+
 export const cloudTts: SpeechProvider = {
   id: 'cloud',
   async warm(cardId, text) {
@@ -74,20 +84,47 @@ export const cloudTts: SpeechProvider = {
   },
   async speak(cardId, text, rate) {
     const blob = await getOrFetch(cardId, text)
+    const token = ++playToken
     const a = audioEl()
     if (a.src.startsWith('blob:')) URL.revokeObjectURL(a.src)
     a.src = URL.createObjectURL(blob)
     // Mantém o timbre ao reduzir a velocidade, em vez de gerar um segundo áudio.
     ;(a as HTMLAudioElement & { preservesPitch?: boolean }).preservesPitch = true
     a.playbackRate = rate
+
     try {
       await a.play()
     } catch (e) {
-      // stop() chama pause() para trocar de áudio; isso rejeita a promise de
-      // play() em andamento mesmo quando o som já havia começado a tocar.
+      if (token !== playToken) return
       if (e instanceof DOMException && e.name === 'AbortError') return
       throw e
     }
+
+    // Sem isso a promise resolvia assim que o play começava, não quando o
+    // áudio terminava — a onda parava de animar bem antes do fim da frase.
+    await new Promise<void>((resolve, reject) => {
+      const cleanup = () => {
+        a.removeEventListener('ended', onEnded)
+        a.removeEventListener('pause', onPause)
+        a.removeEventListener('error', onError)
+      }
+      const onEnded = () => {
+        cleanup()
+        resolve()
+      }
+      const onPause = () => {
+        cleanup()
+        resolve()
+      }
+      const onError = () => {
+        cleanup()
+        if (token !== playToken) resolve()
+        else reject(new Error('Não foi possível reproduzir o áudio.'))
+      }
+      a.addEventListener('ended', onEnded)
+      a.addEventListener('pause', onPause)
+      a.addEventListener('error', onError)
+    })
   },
 }
 

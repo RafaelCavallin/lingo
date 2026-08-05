@@ -1,19 +1,39 @@
 import { useState } from 'react'
 import { db, type Deck } from '../services/db'
 import { newCard } from '../services/scheduler'
-import type { AnkiDeckFile } from '../services/ankiImport'
-import { speech } from '../services/audio'
+import type { AnkiDeckFile, AnkiNote } from '../services/ankiImport'
+import { activeVoice, setVoice, speech } from '../services/audio'
+import { useDeck } from '../contexts/DeckContext'
+import { AnkiNotePicker } from '../components/AnkiNotePicker'
+import { ImportTarget } from '../components/ImportTarget'
 
 type Stage =
   | { name: 'pick' }
   | { name: 'reading' }
   | { name: 'map'; file: AnkiDeckFile; front: number; back: number }
+  | { name: 'select'; file: AnkiDeckFile; front: number; back: number }
+  | {
+      name: 'target'
+      notes: AnkiNote[]
+      front: number
+      back: number
+      suggestedName: string
+      /** Para onde o botão voltar leva — o estágio de onde as notas vieram. */
+      from: 'map' | 'select'
+      file: AnkiDeckFile
+    }
   | { name: 'importing'; total: number; done: number; phase: 'cards' | 'audio' }
-  | { name: 'done'; count: number }
+  | { name: 'done'; count: number; deckName: string }
 
-export function Import({ deck, onBack }: { deck: Deck; onBack: () => void }) {
+// O baralho de destino é escolhido no fim do fluxo, então esta tela não
+// depende mais do baralho ativo — quem precisa dele é o ImportTarget.
+export function Import({ onBack }: { onBack: () => void }) {
+  const { switchDeck } = useDeck()
   const [stage, setStage] = useState<Stage>({ name: 'pick' })
   const [error, setError] = useState<string | null>(null)
+  // Índices marcados no seletor. Fica aqui, e não no componente, para que ir
+  // ao destino e voltar não apague o que o usuário já tinha escolhido.
+  const [selected, setSelected] = useState<Set<number>>(new Set())
 
   async function pick(file: File) {
     setError(null)
@@ -23,6 +43,7 @@ export function Import({ deck, onBack }: { deck: Deck; onBack: () => void }) {
       // mantém o app leve para quem só estuda.
       const { readApkg } = await import('../services/ankiImport')
       const parsed = await readApkg(file)
+      setSelected(new Set())
       setStage({ name: 'map', file: parsed, front: 0, back: Math.min(1, parsed.fieldNames.length - 1) })
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Não foi possível ler o arquivo.')
@@ -30,12 +51,12 @@ export function Import({ deck, onBack }: { deck: Deck; onBack: () => void }) {
     }
   }
 
-  async function run(file: AnkiDeckFile, front: number, back: number) {
-    const usable = file.notes.filter((n) => n.fields[front]?.trim())
+  async function run(target: Deck, notes: AnkiNote[], front: number, back: number) {
+    const usable = notes.filter((n) => n.fields[front]?.trim())
     setStage({ name: 'importing', total: usable.length, done: 0, phase: 'cards' })
 
     const cards = usable.map((n) =>
-      newCard(deck.id, n.fields[front], n.fields[back] ?? '', []),
+      newCard(target.id, n.fields[front], n.fields[back] ?? '', []),
     )
     await db.cards.bulkAdd(cards)
 
@@ -43,14 +64,27 @@ export function Import({ deck, onBack }: { deck: Deck; onBack: () => void }) {
     // entra mesmo assim e a narração sai na primeira revisão.
     setStage({ name: 'importing', total: cards.length, done: 0, phase: 'audio' })
     const { runPool } = await import('../services/ankiImport')
-    await runPool(
-      cards,
-      (c) => speech.warm(c.id, c.sentence),
-      3,
-      (done) => setStage({ name: 'importing', total: cards.length, done, phase: 'audio' }),
-    )
 
-    setStage({ name: 'done', count: cards.length })
+    // A voz é global e acompanha o baralho ativo. Importando para outro
+    // baralho, a narração sairia com a voz errada e seria descartada na
+    // primeira revisão — gerar com a voz do destino evita esse retrabalho.
+    const previousVoice = activeVoice()
+    setVoice(target.voice)
+    try {
+      await runPool(
+        cards,
+        (c) => speech.warm(c.id, c.sentence),
+        3,
+        (done) => setStage({ name: 'importing', total: cards.length, done, phase: 'audio' }),
+      )
+    } finally {
+      setVoice(previousVoice)
+    }
+
+    // Terminar no baralho que recebeu os cartões: é nele que o usuário quer
+    // continuar, e a home já abre mostrando o que acabou de entrar.
+    switchDeck(target.id)
+    setStage({ name: 'done', count: cards.length, deckName: target.name })
   }
 
   return (
@@ -87,6 +121,7 @@ export function Import({ deck, onBack }: { deck: Deck; onBack: () => void }) {
           <div className="mt-8">
             <p className="font-mono text-xs uppercase tracking-wider text-signal">
               {stage.file.notes.length} notas encontradas
+              {stage.file.deckNames.length > 1 && ` · ${stage.file.deckNames.length} baralhos`}
             </p>
 
             <FieldPicker
@@ -113,12 +148,66 @@ export function Import({ deck, onBack }: { deck: Deck; onBack: () => void }) {
             </div>
 
             <button
-              onClick={() => run(stage.file, stage.front, stage.back)}
+              onClick={() =>
+                setStage({
+                  name: 'target',
+                  file: stage.file,
+                  notes: stage.file.notes,
+                  front: stage.front,
+                  back: stage.back,
+                  suggestedName: stage.file.deckNames.length === 1 ? stage.file.deckNames[0] : '',
+                  from: 'map',
+                })
+              }
               className="mt-8 w-full rounded-2xl bg-signal py-4 font-medium text-ink transition hover:brightness-110"
             >
-              Importar {stage.file.notes.length} frases
+              Importar todas as {stage.file.notes.length} frases
+            </button>
+            <button
+              onClick={() => setStage({ ...stage, name: 'select' })}
+              className="mt-3 w-full rounded-2xl border border-line py-4 font-medium text-muted transition hover:border-signal hover:text-text"
+            >
+              Escolher os cartões
             </button>
           </div>
+        )}
+
+        {stage.name === 'select' && (
+          <AnkiNotePicker
+            file={stage.file}
+            front={stage.front}
+            back={stage.back}
+            selected={selected}
+            setSelected={setSelected}
+            onBack={() => setStage({ ...stage, name: 'map' })}
+            onConfirm={(notes, deckFilter) =>
+              setStage({
+                name: 'target',
+                file: stage.file,
+                notes,
+                front: stage.front,
+                back: stage.back,
+                suggestedName: deckFilter,
+                from: 'select',
+              })
+            }
+          />
+        )}
+
+        {stage.name === 'target' && (
+          <ImportTarget
+            count={stage.notes.length}
+            suggestedName={stage.suggestedName}
+            onBack={() => {
+              const previous = { file: stage.file, front: stage.front, back: stage.back }
+              setStage(
+                stage.from === 'select'
+                  ? { name: 'select', ...previous }
+                  : { name: 'map', ...previous },
+              )
+            }}
+            onConfirm={(target) => run(target, stage.notes, stage.front, stage.back)}
+          />
         )}
 
         {stage.name === 'importing' && (
@@ -142,7 +231,8 @@ export function Import({ deck, onBack }: { deck: Deck; onBack: () => void }) {
           <div className="mt-10">
             <p className="font-display text-3xl text-hit">{stage.count} frases importadas</p>
             <p className="mt-3 text-muted">
-              Elas entram como cartões novos e serão introduzidas aos poucos, no ritmo em que você
+              Entraram em <span className="text-text">{stage.deckName}</span>, que já é o baralho
+              ativo. São cartões novos: vão ser introduzidos aos poucos, no ritmo em que você
               consolida as anteriores.
             </p>
             <button

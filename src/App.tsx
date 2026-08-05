@@ -79,7 +79,7 @@ function AppShell() {
 
   if (screen === 'review') return <Review deck={deck} onDone={goHome} />
   if (screen === 'add') return <AddCard deck={deck} onBack={goHome} />
-  if (screen === 'import') return <Import deck={deck} onBack={goHome} />
+  if (screen === 'import') return <Import onBack={goHome} />
   if (screen === 'settings')
     return <Settings deck={deck} onBack={goHome} onAccount={() => setScreen('account')} />
   if (screen === 'cards') return <Cards deck={deck} onBack={goHome} />

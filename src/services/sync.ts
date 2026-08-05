@@ -201,31 +201,54 @@ async function pushDirty(supabase: SupabaseClient): Promise<number> {
   ])
   if (decks.length === 0 && cards.length === 0 && logs.length === 0) return 0
 
+  // Cards e logs são chunkados e enviados em fases separadas, cards primeiro:
+  // um review_log pode referenciar qualquer card independente da ordem de
+  // iteração do IndexedDB, então parear os dois por índice de rodada (como
+  // antes) podia mandar um log antes do card que ele referencia — violação
+  // de FK no servidor (review_logs_user_id_card_id_fkey).
   const cardChunks = chunk(cards, PUSH_CHUNK)
   const logChunks = chunk(logs, PUSH_CHUNK)
-  const rounds = Math.max(1, cardChunks.length, logChunks.length)
   let pushed = 0
   let sentDecks = false
 
-  for (let i = 0; i < rounds; i++) {
-    const cChunk = cardChunks[i] ?? []
-    const lChunk = logChunks[i] ?? []
+  if (cardChunks.length === 0 && decks.length) {
+    const { error } = await supabase.rpc('sync_push', {
+      p_decks: decks.map(toDeckRow),
+      p_cards: [],
+      p_logs: [],
+    })
+    if (error) throw error
+    sentDecks = true
+  }
+
+  for (const cChunk of cardChunks) {
     const { error } = await supabase.rpc('sync_push', {
       p_decks: sentDecks ? [] : decks.map(toDeckRow),
       p_cards: cChunk.map(toCardRow),
-      p_logs: lChunk.map(toLogRow),
+      p_logs: [],
     })
     if (error) throw error
     sentDecks = true
     await clearDirty(db.cards, cChunk)
-    // Logs são imutáveis — nada pode tê-los editado em trânsito, então a
-    // flag é limpa direto, sem o compare-and-swap usado em decks/cards.
-    if (lChunk.length) await db.reviewLogs.bulkUpdate(lChunk.map((l) => ({ key: l.id, changes: { dirty: 0 } })))
-    pushed += cChunk.length + lChunk.length
+    pushed += cChunk.length
   }
   if (decks.length) {
     await clearDirty(db.decks, decks)
     pushed += decks.length
+  }
+
+  // Logs só depois de todos os cards já confirmados no servidor.
+  for (const lChunk of logChunks) {
+    const { error } = await supabase.rpc('sync_push', {
+      p_decks: [],
+      p_cards: [],
+      p_logs: lChunk.map(toLogRow),
+    })
+    if (error) throw error
+    // Logs são imutáveis — nada pode tê-los editado em trânsito, então a
+    // flag é limpa direto, sem o compare-and-swap usado em decks/cards.
+    await db.reviewLogs.bulkUpdate(lChunk.map((l) => ({ key: l.id, changes: { dirty: 0 } })))
+    pushed += lChunk.length
   }
   return pushed
 }
