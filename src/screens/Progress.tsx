@@ -10,7 +10,7 @@ export function Progress({ deck, onBack }: { deck: Deck; onBack: () => void }) {
   const [youngLimit, setYoungLimit] = useState(deck.youngLimit)
 
   useEffect(() => {
-    computeStats(deck).then(setStats)
+    void computeStats(deck).then(setStats)
   }, [deck])
 
   async function savePace(next: Partial<Deck>) {
@@ -90,7 +90,7 @@ export function Progress({ deck, onBack }: { deck: Deck; onBack: () => void }) {
                       color: '#EDEBFF',
                     }}
                     labelStyle={{ color: '#9C9BC4' }}
-                    formatter={(v) => [`${v}`, 'frases'] as [string, string]}
+                    formatter={(v) => [String(v), 'frases'] as [string, string]}
                   />
                   <Bar dataKey="count" radius={[3, 3, 0, 0]}>
                     {stats.forecast.map((_, i) => (

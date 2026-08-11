@@ -106,10 +106,10 @@ db.version(2)
   })
   .upgrade(async (tx) => {
     const now = Date.now()
-    await tx.table('cards').toCollection().modify((c) => {
+    await tx.table('cards').toCollection().modify((c: Card) => {
       c.updatedAt ??= c.lastReview ?? c.createdAt ?? now
     })
-    await tx.table('decks').toCollection().modify((d) => {
+    await tx.table('decks').toCollection().modify((d: Deck) => {
       d.updatedAt ??= now
       d.listenFirst ??= false
       d.voice ??= DEFAULT_VOICE
@@ -124,7 +124,7 @@ db.version(3)
     audioBlobs: 'id, cardId, kind, voice',
   })
   .upgrade(async (tx) => {
-    await tx.table('decks').toCollection().modify((d) => {
+    await tx.table('decks').toCollection().modify((d: Deck) => {
       d.speechRate ??= DEFAULT_RATE
     })
   })
@@ -149,17 +149,17 @@ db.version(4)
     syncState: 'key',
   })
   .upgrade(async (tx) => {
-    await tx.table('decks').toCollection().modify((d) => {
+    await tx.table('decks').toCollection().modify((d: Deck) => {
       d.dirty = 0
       d.deletedAt ??= 0
     })
-    await tx.table('cards').toCollection().modify((c) => {
+    await tx.table('cards').toCollection().modify((c: Card) => {
       c.dirty = 0
       c.deletedAt ??= 0
     })
-    const cards = await tx.table('cards').toArray()
+    const cards = (await tx.table('cards').toArray()) as Card[]
     const deckByCardId = new Map(cards.map((c) => [c.id, c.deckId]))
-    await tx.table('reviewLogs').toCollection().modify((l) => {
+    await tx.table('reviewLogs').toCollection().modify((l: ReviewLog) => {
       l.dirty = 0
       l.deckId ??= deckByCardId.get(l.cardId) ?? ''
     })
@@ -171,8 +171,8 @@ db.version(4)
  * grava linhas remotas com `dirty: 0` explícito; o sentinela abaixo respeita
  * isso (não sobrescreve quando o caller já nomeou `dirty`).
  */
-function trackDirty<T extends { dirty?: 0 | 1; deletedAt?: number }>(
-  table: EntityTable<T, any>,
+function trackDirty<T extends { dirty?: 0 | 1; deletedAt?: number }, K extends keyof T>(
+  table: EntityTable<T, K>,
   hasDeletedAt: boolean,
 ) {
   table.hook('creating', (_pk, obj) => {

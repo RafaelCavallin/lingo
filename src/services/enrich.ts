@@ -37,10 +37,10 @@ export async function enrich(sentence: string, signal?: AbortSignal): Promise<En
       })
 
       if (res.status === 501) {
-        const detail = await res.json().catch(() => null)
+        const detail: unknown = await res.json().catch(() => null)
         throw new EnrichUnavailable(
           detail && typeof detail === 'object' && 'error' in detail
-            ? String((detail as { error: unknown }).error)
+            ? String(detail.error)
             : 'Geração automática não configurada no servidor.',
         )
       }
@@ -52,10 +52,10 @@ export async function enrich(sentence: string, signal?: AbortSignal): Promise<En
         )
       }
       if (!res.ok) {
-        const detail = await res.json().catch(() => null)
+        const detail: unknown = await res.json().catch(() => null)
         throw new Error(
           detail && typeof detail === 'object' && 'error' in detail
-            ? `Falha na geração: ${String((detail as { error: unknown }).error)}`
+            ? `Falha na geração: ${String(detail.error)}`
             : `Falha na geração (HTTP ${res.status}).`,
         )
       }

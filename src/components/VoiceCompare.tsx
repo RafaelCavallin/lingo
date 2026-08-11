@@ -25,7 +25,7 @@ export function VoiceCompare({ cardId, sentence }: { cardId: string; sentence: s
     setMode('idle')
     setError(null)
     setComparing(null)
-    getRecording(cardId).then((b) => b && setMode('has-take'))
+    void getRecording(cardId).then((b) => b && setMode('has-take'))
     return () => {
       cancelRecording()
       stopPlayback()

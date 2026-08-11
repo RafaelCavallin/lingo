@@ -116,7 +116,7 @@ export function parseCardRow(raw: unknown): Parsed<Card> | null {
       updatedAt: c.updated_at,
       deletedAt: c.deleted_at,
       dirty: 0,
-    } as Card,
+    },
     syncedAt: c.synced_at,
   }
 }
@@ -136,7 +136,7 @@ export function parseReviewLogRow(raw: unknown): Parsed<ReviewLog> | null {
       scheduledDays: l.scheduled_days,
       durationMs: l.duration_ms,
       dirty: 0,
-    } as ReviewLog,
+    },
     syncedAt: l.synced_at,
   }
 }

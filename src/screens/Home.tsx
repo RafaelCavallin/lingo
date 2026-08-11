@@ -53,7 +53,7 @@ export function Home({
   }, [reviewedToday])
 
   useEffect(() => {
-    buildQueue(deck).then(async (q) => {
+    void buildQueue(deck).then(async (q) => {
       setQueueSize(q.length)
       // Baixa o áudio das primeiras frases enquanto o usuário ainda está na
       // home: ao tocar em "Estudar" o som já está em disco.

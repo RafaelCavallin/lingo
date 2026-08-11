@@ -10,7 +10,7 @@ const BOUND_USER_KEY = 'boundUserId'
  * trecho do e-mail antes do @.
  */
 export function displayName(user: User): string {
-  const name = user.user_metadata?.name
+  const name: unknown = user.user_metadata?.name
   if (typeof name === 'string' && name.trim()) return name.trim()
   return user.email?.split('@')[0] ?? 'Conta'
 }

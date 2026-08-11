@@ -72,7 +72,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let cancelled = false
     // Só baixa o supabase-js no boot se este aparelho já usou conta antes —
     // quem nunca fez login não deve pagar esse custo ao abrir o app.
-    getBoundUserId().then((bound) => {
+    void getBoundUserId().then((bound) => {
       if (bound && !cancelled) void ensureListening().then(() => syncNow('boot'))
     })
     return () => {

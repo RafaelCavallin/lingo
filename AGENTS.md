@@ -73,12 +73,14 @@ npm run build        # tsc -b (type-check) + vite build de produção
 npm run preview       # serve o build de produção localmente, para conferir antes de deployar
 ```
 
-`npm run build` falha se houver erro de tipo — é o mesmo check que roda no CI/deploy da Vercel.
+`npm run build` falha se houver erro de tipo — é o mesmo check que roda no CI (`.github/workflows/ci.yml`, junto de `lint`/`test`) e no deploy da Vercel.
 
 ## Testes
 
-**Não há suíte de testes configurada neste projeto** (sem Jest/Vitest/Playwright, sem script `test` no `package.json`). Validação hoje é feita por:
-- `npm run build` (type-check via `tsc -b`);
-- teste manual no navegador (`npm run dev` ou `npx vercel dev`).
+```bash
+npm test        # Vitest (jsdom), roda uma vez e sai
+```
 
-Se for adicionar uma suíte de testes, atualizar esta seção com o comando e o framework escolhido.
+Cobre a lógica de negócio mais arriscada do projeto — `services/sync.ts` (LWW, paginação por keyset, CAS no clearDirty, ordem cards-antes-de-logs no push, mutex de `navigator.locks`), `services/auth.ts` (os 4 ramos de `decideOnSignIn`, `completeSignIn`) e `services/syncRows.ts` (parse/serialize) — usando `fake-indexeddb` (Dexie real em memória) e um fake `SupabaseClient` escrito à mão (`src/test/fakeSupabase.ts`), sem mexer no código de produção para isso.
+
+**Não cobre UI/telas** (sem `@testing-library`/Playwright) — validação de componentes React continua manual (`npm run dev` ou `npx vercel dev`), junto do type-check via `npm run build`.

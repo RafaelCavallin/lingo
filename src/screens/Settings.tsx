@@ -34,8 +34,8 @@ export function Settings({
   })
 
   useEffect(() => {
-    reviewCount(deck.id).then(setReviews)
-    speech.warm('preview', SAMPLE).finally(() => setNeuralVoice(usingNeuralVoice()))
+    void reviewCount(deck.id).then(setReviews)
+    void speech.warm('preview', SAMPLE).finally(() => setNeuralVoice(usingNeuralVoice()))
   }, [deck.id])
 
   async function playSample(rate: number) {

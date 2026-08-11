@@ -271,7 +271,7 @@ async function clearDirty<T extends { id: string; updatedAt: number }>(
 ): Promise<void> {
   if (sent.length === 0) return
   const now = await table.bulkGet(sent.map((r) => r.id))
-  const stillUnchanged = sent.filter((r, i) => now[i] && now[i]!.updatedAt === r.updatedAt)
+  const stillUnchanged = sent.filter((r, i) => now[i] && now[i].updatedAt === r.updatedAt)
   for (const r of stillUnchanged) await table.update(r.id, { dirty: 0 })
 }
 

@@ -1,5 +1,5 @@
 import { db, liveCards, type Deck } from './db'
-import { useParameters } from './scheduler'
+import { applyFsrsParameters } from './scheduler'
 import type { OptimizeRequest, OptimizeResponse } from '../workers/optimizer.worker'
 
 /** Abaixo disto o resultado é ruído: os parâmetros padrão são melhores. */
@@ -82,7 +82,7 @@ export async function optimize(deck: Deck): Promise<number[]> {
       paramsOptimizedAt: Date.now(),
       updatedAt: Date.now(),
     })
-    useParameters(parameters)
+    applyFsrsParameters(parameters)
     return parameters
   } finally {
     worker.terminate()

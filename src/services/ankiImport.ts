@@ -107,6 +107,7 @@ function readDeckNames(db: import('sql.js').Database): Map<number, string> {
   try {
     const res = db.exec('SELECT id, name FROM decks')
     for (const r of res[0]?.values ?? []) {
+      // eslint-disable-next-line no-control-regex -- separador real usado pelo Anki entre níveis de subbaralho
       names.set(Number(r[0]), String(r[1] ?? '').replace(/\u001f/g, '::'))
     }
     if (names.size) return names

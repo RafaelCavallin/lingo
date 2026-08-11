@@ -10,7 +10,7 @@ import {
   type Deck,
 } from '../services/db'
 import { setSpeechRate, setVoice } from '../services/audio'
-import { useParameters } from '../services/scheduler'
+import { applyFsrsParameters } from '../services/scheduler'
 
 const ACTIVE_DECK_KEY = 'lingo.activeDeckId'
 
@@ -54,7 +54,7 @@ export function DeckProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (decks === undefined || initialized.current) return
     initialized.current = true
-    ;(async () => {
+    void (async () => {
       if (activeId && decks.some((d) => d.id === activeId)) {
         setSeeded(true)
         return
@@ -89,7 +89,7 @@ export function DeckProvider({ children }: { children: ReactNode }) {
     if (!deck) return
     setVoice(deck.voice)
     setSpeechRate(deck.speechRate ?? DEFAULT_RATE)
-    useParameters(deck.fsrsParams)
+    applyFsrsParameters(deck.fsrsParams)
   }, [deck])
 
   const switchDeck = useCallback((id: string) => setActiveId(id), [])

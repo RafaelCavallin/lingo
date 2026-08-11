@@ -4,7 +4,7 @@ import { db, liveCards, uid, type Card, type Deck, type ReviewLog } from './db'
 let f = fsrs(generatorParameters({ request_retention: 0.9, enable_fuzz: true }))
 
 /** Aplica os parâmetros otimizados sobre o histórico real do usuário. */
-export function useParameters(w?: number[]) {
+export function applyFsrsParameters(w?: number[]) {
   f = fsrs(
     generatorParameters(
       w && w.length ? { request_retention: 0.9, enable_fuzz: true, w } : { request_retention: 0.9, enable_fuzz: true },

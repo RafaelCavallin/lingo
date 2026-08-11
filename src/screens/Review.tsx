@@ -21,7 +21,7 @@ export function Review({ deck, onDone }: { deck: Deck; onDone: () => void }) {
   const card = queue?.[index]
 
   useEffect(() => {
-    buildQueue(deck).then(setQueue)
+    void buildQueue(deck).then(setQueue)
   }, [deck])
 
   const play = useCallback(
