@@ -1,7 +1,19 @@
+import type { User } from '@supabase/supabase-js'
 import { db, liveCards, DEFAULT_DECK_NAME } from './db'
 import { getSupabase } from './supabase'
 
 const BOUND_USER_KEY = 'boundUserId'
+
+/**
+ * Nome informado no cadastro (`raw_user_meta_data.name` em auth.users). Contas
+ * antigas ou criadas fora do formulário podem não ter — daí o recuo para o
+ * trecho do e-mail antes do @.
+ */
+export function displayName(user: User): string {
+  const name = user.user_metadata?.name
+  if (typeof name === 'string' && name.trim()) return name.trim()
+  return user.email?.split('@')[0] ?? 'Conta'
+}
 
 /** Conta à qual este banco local está vinculado — vive só no Dexie, nunca sobe no sync. */
 export async function getBoundUserId(): Promise<string | null> {

@@ -186,7 +186,7 @@ export function AnkiNotePicker({
       </ul>
 
       {/* A lista é longa demais para deixar o botão só lá embaixo. */}
-      <div className="sticky bottom-0 -mx-5 mt-6 flex items-center gap-4 border-t border-line bg-ink/95 px-5 py-4 backdrop-blur">
+      <div className="sticky bottom-0 -mx-5 mt-6 flex items-center gap-4 border-t border-line bg-ink/95 px-5 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-4 backdrop-blur">
         <button onClick={onBack} className="shrink-0 font-mono text-xs text-muted hover:text-text">
           ← Campos
         </button>

@@ -119,7 +119,7 @@ export function Review({ deck, onDone }: { deck: Deck; onDone: () => void }) {
   }
 
   return (
-    <div className="mx-auto flex min-h-dvh max-w-2xl flex-col px-5 pb-8 pt-6">
+    <div className="mx-auto flex min-h-dvh max-w-2xl flex-col px-5 pb-[calc(2rem+env(safe-area-inset-bottom))] pt-6">
       <header className="flex items-center justify-between font-mono text-xs text-muted">
         <button onClick={onDone} className="hover:text-text">← Sair</button>
         <span>

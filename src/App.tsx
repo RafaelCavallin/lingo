@@ -99,6 +99,7 @@ function AppShell() {
       onProgress={() => setScreen('progress')}
       onSettings={() => setScreen('settings')}
       onCards={() => setScreen('cards')}
+      onAccount={() => setScreen('account')}
     />
   )
 }

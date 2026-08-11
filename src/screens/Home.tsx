@@ -5,6 +5,8 @@ import { buildQueue, estimateMinutes } from '../services/scheduler'
 import { Heatmap, iso } from '../components/Heatmap'
 import { speech } from '../services/audio'
 import { DeckSwitcher } from '../components/DeckSwitcher'
+import { useAuth } from '../contexts/AuthContext'
+import { displayName } from '../services/auth'
 
 /** Só os primeiros cartões: a home não deve puxar a fila inteira da rede. */
 const WARM_ON_HOME = 2
@@ -17,6 +19,7 @@ export function Home({
   onProgress,
   onSettings,
   onCards,
+  onAccount,
 }: {
   deck: Deck
   onStudy: () => void
@@ -25,7 +28,9 @@ export function Home({
   onProgress: () => void
   onSettings: () => void
   onCards: () => void
+  onAccount: () => void
 }) {
+  const { configured: syncConfigured, session } = useAuth()
   const [queueSize, setQueueSize] = useState<number | null>(null)
   const [minutes, setMinutes] = useState(0)
   const [switcherOpen, setSwitcherOpen] = useState(false)
@@ -70,15 +75,37 @@ export function Home({
   const hasHistory = (byDay?.size ?? 0) > 0
 
   return (
-    <div className="mx-auto flex min-h-dvh max-w-2xl flex-col px-5 pb-10 pt-8">
-      <header className="flex items-baseline justify-between">
+    <div className="mx-auto flex min-h-dvh max-w-2xl flex-col px-5 pb-[calc(2.5rem+env(safe-area-inset-bottom))] pt-8">
+      <header className="flex items-baseline justify-between gap-4">
         <h1 className="font-display text-lg tracking-tight">Lingo</h1>
-        <button
-          onClick={() => setSwitcherOpen(true)}
-          className="font-mono text-xs text-muted transition hover:text-signal"
-        >
-          {deck.name} ▾
-        </button>
+        <div className="flex min-w-0 items-baseline gap-4">
+          <button
+            onClick={() => setSwitcherOpen(true)}
+            className="truncate font-mono text-xs text-muted transition hover:text-signal"
+          >
+            {deck.name} ▾
+          </button>
+          {/* O login vivia escondido dentro de Ajustes; aqui ele fica a um toque
+              em qualquer sessão, sem competir com o botão de estudar. */}
+          {syncConfigured &&
+            (session ? (
+              <button
+                onClick={onAccount}
+                title={session.user.email}
+                aria-label={`Conta de ${session.user.email}`}
+                className="shrink-0 truncate font-mono text-xs text-muted transition hover:text-signal"
+              >
+                {displayName(session.user)}
+              </button>
+            ) : (
+              <button
+                onClick={onAccount}
+                className="shrink-0 rounded-full border border-line px-3 py-1.5 font-mono text-xs uppercase tracking-wider text-muted transition hover:border-signal hover:text-signal"
+              >
+                Entrar
+              </button>
+            ))}
+        </div>
       </header>
 
       {switcherOpen && <DeckSwitcher onClose={() => setSwitcherOpen(false)} />}
@@ -139,19 +166,33 @@ export function Home({
         )}
       </main>
 
-      <footer className="flex items-center justify-between border-t border-line pt-5 font-mono text-xs text-muted">
-        <div className="flex gap-5">
-          <button onClick={onAdd} className="hover:text-signal">+ Frase</button>
-          <button onClick={onImport} className="hover:text-signal">Importar</button>
-          <button onClick={onCards} className="hover:text-signal">Cartões</button>
-          <button onClick={onProgress} className="hover:text-signal">Progresso</button>
-          <button onClick={download} className="hover:text-signal">Backup</button>
-          <button onClick={onSettings} className="hover:text-signal">Ajustes</button>
-        </div>
-        <span>
+      {/* No celular os seis atalhos não cabem em uma linha só — viravam uma fila
+          que escapava da tela. Grade de três colunas até sm, linha única acima. */}
+      <footer className="flex flex-col gap-4 border-t border-line pt-5 font-mono text-xs text-muted sm:flex-row sm:items-center sm:justify-between sm:gap-5">
+        <nav className="grid grid-cols-3 gap-x-4 gap-y-1 sm:flex sm:gap-5">
+          <FooterLink onClick={onAdd}>+ Frase</FooterLink>
+          <FooterLink onClick={onImport}>Importar</FooterLink>
+          <FooterLink onClick={onCards}>Cartões</FooterLink>
+          <FooterLink onClick={onProgress}>Progresso</FooterLink>
+          <FooterLink onClick={download}>Backup</FooterLink>
+          <FooterLink onClick={onSettings}>Ajustes</FooterLink>
+        </nav>
+        <span className="whitespace-nowrap">
           {total ?? 0} cartões · {reviewedToday ?? 0} hoje
         </span>
       </footer>
     </div>
+  )
+}
+
+/** No toque o alvo precisa ser maior que a altura da fonte — daí o py-2 no mobile. */
+function FooterLink({ onClick, children }: { onClick: () => void; children: string }) {
+  return (
+    <button
+      onClick={onClick}
+      className="whitespace-nowrap py-2 text-left transition hover:text-signal sm:py-0"
+    >
+      {children}
+    </button>
   )
 }

@@ -8,3 +8,6 @@ tsconfig.tsbuildinfo
 .claude/settings.local.json
 .claude
 .agents
+
+openai-api-uso.md
+ARQUITETURA.md
