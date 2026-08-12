@@ -4,6 +4,7 @@ import { newCard } from '../services/scheduler'
 import { speech, normalRate } from '../services/audio'
 import { enrich, EnrichUnavailable } from '../services/enrich'
 import { ClozeEditor, type Range } from '../components/ClozeEditor'
+import { MobileNav } from '../components/MobileNav'
 
 const HINT_TYPES: { value: HintType; label: string }[] = [
   { value: 'phrasal_verb', label: 'Phrasal verb' },
@@ -56,8 +57,11 @@ export function AddCard({ deck, onBack }: { deck: Deck; onBack: () => void }) {
   return (
     <div className="mx-auto flex min-h-dvh max-w-2xl flex-col px-5 pb-10 pt-6">
       <header className="flex items-center justify-between font-mono text-xs text-muted">
-        <button onClick={onBack} className="hover:text-text">← Início</button>
-        {saved > 0 && <span className="text-hit">{saved} salvas nesta sessão</span>}
+        <div className="flex min-w-0 flex-1 items-center justify-between gap-4">
+          <button onClick={onBack} className="hover:text-text">← Início</button>
+          {saved > 0 && <span className="truncate text-hit">{saved} salvas nesta sessão</span>}
+        </div>
+        <MobileNav />
       </header>
 
       <main className="flex-1 py-10">

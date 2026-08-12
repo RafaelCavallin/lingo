@@ -294,3 +294,14 @@ export async function exportBackup(): Promise<Blob> {
   const payload = { version: 2, exportedAt: Date.now(), decks, cards, reviewLogs }
   return new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
 }
+
+/** Dispara o download do backup. Fica aqui porque o nome do arquivo faz parte
+ *  do formato — Home e menu chamam o mesmo caminho. */
+export async function downloadBackup(): Promise<void> {
+  const url = URL.createObjectURL(await exportBackup())
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `lingo-backup-${new Date().toISOString().slice(0, 10)}.json`
+  a.click()
+  URL.revokeObjectURL(url)
+}

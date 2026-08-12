@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { deleteCard, liveCards, type Card, type Deck } from '../services/db'
+import { MobileNav } from '../components/MobileNav'
 
 /**
  * Um deck importado do Anki chega com milhares de cartões. Renderizar todos
@@ -77,8 +78,13 @@ export function Cards({ deck, onBack }: { deck: Deck; onBack: () => void }) {
   return (
     <div className="mx-auto flex min-h-dvh max-w-2xl flex-col px-5 pb-14 pt-6">
       <header className="flex items-center justify-between font-mono text-xs text-muted">
-        <button onClick={onBack} className="hover:text-text">← Início</button>
-        <span>{filtered?.length ?? 0} cartões</span>
+        {/* flex-1: acima de md o ☰ some e este bloco volta a ocupar a linha
+            inteira, mantendo o contador na borda direita como antes. */}
+        <div className="flex min-w-0 flex-1 items-center justify-between gap-4">
+          <button onClick={onBack} className="hover:text-text">← Início</button>
+          <span className="truncate">{filtered?.length ?? 0} cartões</span>
+        </div>
+        <MobileNav />
       </header>
 
       <main className="flex-1 py-8">

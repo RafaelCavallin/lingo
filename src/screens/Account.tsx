@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
+import { MobileNav } from '../components/MobileNav'
 
 export function Account({ onBack }: { onBack: () => void }) {
   const { configured, session, signUp, signIn, signOut } = useAuth()
@@ -145,8 +146,9 @@ function SignInForm({
 function Shell({ children, onBack }: { children: React.ReactNode; onBack: () => void }) {
   return (
     <div className="mx-auto flex min-h-dvh max-w-md flex-col px-5 pb-14 pt-6">
-      <header className="font-mono text-xs text-muted">
+      <header className="flex items-center justify-between font-mono text-xs text-muted">
         <button onClick={onBack} className="hover:text-text">← Início</button>
+        <MobileNav />
       </header>
       <main className="flex-1 py-8">{children}</main>
     </div>

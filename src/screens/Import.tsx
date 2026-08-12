@@ -6,6 +6,7 @@ import { activeVoice, setVoice, speech } from '../services/audio'
 import { useDeck } from '../contexts/DeckContext'
 import { AnkiNotePicker } from '../components/AnkiNotePicker'
 import { ImportTarget } from '../components/ImportTarget'
+import { MobileNav } from '../components/MobileNav'
 
 type Stage =
   | { name: 'pick' }
@@ -89,8 +90,9 @@ export function Import({ onBack }: { onBack: () => void }) {
 
   return (
     <div className="mx-auto flex min-h-dvh max-w-2xl flex-col px-5 pb-10 pt-6">
-      <header className="font-mono text-xs text-muted">
+      <header className="flex items-center justify-between font-mono text-xs text-muted">
         <button onClick={onBack} className="hover:text-text">← Início</button>
+        <MobileNav />
       </header>
 
       <main className="flex-1 py-10">

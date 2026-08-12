@@ -1,6 +1,7 @@
 import { Suspense, lazy, useEffect, useState } from 'react'
 import { DeckProvider, useDeck } from './contexts/DeckContext'
 import { AuthProvider } from './contexts/AuthContext'
+import { NavigationProvider, type Screen } from './contexts/NavigationContext'
 import { AccountTransition } from './components/AccountTransition'
 import { syncNow } from './services/sync'
 import { Home } from './screens/Home'
@@ -12,8 +13,6 @@ import { Cards } from './screens/Cards'
 import { Account } from './screens/Account'
 // Recharts só é baixado por quem abre o progresso — o caminho de estudo fica leve.
 const Progress = lazy(() => import('./screens/Progress').then((m) => ({ default: m.Progress })))
-
-type Screen = 'home' | 'review' | 'add' | 'import' | 'progress' | 'settings' | 'cards' | 'account'
 
 export default function App() {
   return (
@@ -50,6 +49,10 @@ function AppShell() {
     void syncNow('session-end')
   }
 
+  // Voltar para a Home continua sendo o fim de sessão (e o gatilho do sync);
+  // pular direto de Cartões para Ajustes pelo menu, não.
+  const navigate = (next: Screen) => (next === 'home' ? goHome() : setScreen(next))
+
   // Só acontece se o usuário excluiu todos os seus baralhos — não é um
   // estado de carregamento. ensureDefaultDeck() nunca recria um sozinho aqui.
   if (!deck) {
@@ -77,29 +80,37 @@ function AppShell() {
     )
   }
 
-  if (screen === 'review') return <Review deck={deck} onDone={goHome} />
-  if (screen === 'add') return <AddCard deck={deck} onBack={goHome} />
-  if (screen === 'import') return <Import onBack={goHome} />
-  if (screen === 'settings')
-    return <Settings deck={deck} onBack={goHome} onAccount={() => setScreen('account')} />
-  if (screen === 'cards') return <Cards deck={deck} onBack={goHome} />
-  if (screen === 'account') return <Account onBack={goHome} />
-  if (screen === 'progress')
+  const renderScreen = () => {
+    if (screen === 'review') return <Review deck={deck} onDone={goHome} />
+    if (screen === 'add') return <AddCard deck={deck} onBack={goHome} />
+    if (screen === 'import') return <Import onBack={goHome} />
+    if (screen === 'settings')
+      return <Settings deck={deck} onBack={goHome} onAccount={() => setScreen('account')} />
+    if (screen === 'cards') return <Cards deck={deck} onBack={goHome} />
+    if (screen === 'account') return <Account onBack={goHome} />
+    if (screen === 'progress')
+      return (
+        <Suspense fallback={<div className="p-6 font-mono text-xs text-muted">Carregando…</div>}>
+          <Progress deck={deck} onBack={goHome} />
+        </Suspense>
+      )
     return (
-      <Suspense fallback={<div className="p-6 font-mono text-xs text-muted">Carregando…</div>}>
-        <Progress deck={deck} onBack={goHome} />
-      </Suspense>
+      <Home
+        deck={deck}
+        onStudy={() => setScreen('review')}
+        onAdd={() => setScreen('add')}
+        onImport={() => setScreen('import')}
+        onProgress={() => setScreen('progress')}
+        onSettings={() => setScreen('settings')}
+        onCards={() => setScreen('cards')}
+        onAccount={() => setScreen('account')}
+      />
     )
+  }
+
   return (
-    <Home
-      deck={deck}
-      onStudy={() => setScreen('review')}
-      onAdd={() => setScreen('add')}
-      onImport={() => setScreen('import')}
-      onProgress={() => setScreen('progress')}
-      onSettings={() => setScreen('settings')}
-      onCards={() => setScreen('cards')}
-      onAccount={() => setScreen('account')}
-    />
+    <NavigationProvider screen={screen} navigate={navigate}>
+      {renderScreen()}
+    </NavigationProvider>
   )
 }

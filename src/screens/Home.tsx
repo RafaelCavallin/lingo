@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, exportBackup, liveCards, type Deck } from '../services/db'
+import { db, downloadBackup, liveCards, type Deck } from '../services/db'
 import { buildQueue, estimateMinutes } from '../services/scheduler'
 import { Heatmap, iso } from '../components/Heatmap'
 import { speech } from '../services/audio'
 import { DeckSwitcher } from '../components/DeckSwitcher'
+import { MobileNav } from '../components/MobileNav'
 import { useAuth } from '../contexts/AuthContext'
 import { displayName } from '../services/auth'
 
@@ -62,15 +63,6 @@ export function Home({
     })
   }, [deck, reviewedToday, total])
 
-  async function download() {
-    const url = URL.createObjectURL(await exportBackup())
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `lingo-backup-${new Date().toISOString().slice(0, 10)}.json`
-    a.click()
-    URL.revokeObjectURL(url)
-  }
-
   const empty = (total ?? 0) === 0
   const hasHistory = (byDay?.size ?? 0) > 0
 
@@ -78,7 +70,8 @@ export function Home({
     <div className="mx-auto flex min-h-dvh max-w-2xl flex-col px-5 pb-[calc(2.5rem+env(safe-area-inset-bottom))] pt-8">
       <header className="flex items-baseline justify-between gap-4">
         <h1 className="font-display text-lg tracking-tight">Lingo</h1>
-        <div className="flex min-w-0 items-baseline gap-4">
+        {/* Abaixo de md estes dois controles vivem dentro do menu hamburguer. */}
+        <div className="hidden min-w-0 items-baseline gap-4 md:flex">
           <button
             onClick={() => setSwitcherOpen(true)}
             className="truncate font-mono text-xs text-muted transition hover:text-signal"
@@ -106,6 +99,7 @@ export function Home({
               </button>
             ))}
         </div>
+        <MobileNav />
       </header>
 
       {switcherOpen && <DeckSwitcher onClose={() => setSwitcherOpen(false)} />}
@@ -166,15 +160,15 @@ export function Home({
         )}
       </main>
 
-      {/* No celular os seis atalhos não cabem em uma linha só — viravam uma fila
-          que escapava da tela. Grade de três colunas até sm, linha única acima. */}
-      <footer className="flex flex-col gap-4 border-t border-line pt-5 font-mono text-xs text-muted sm:flex-row sm:items-center sm:justify-between sm:gap-5">
-        <nav className="grid grid-cols-3 gap-x-4 gap-y-1 sm:flex sm:gap-5">
+      {/* Os seis atalhos em linha só cabem a partir de md; abaixo disso quem
+          navega é o menu hamburguer e aqui fica só o resumo do dia. */}
+      <footer className="flex items-center justify-between gap-5 border-t border-line pt-5 font-mono text-xs text-muted">
+        <nav className="hidden gap-5 md:flex">
           <FooterLink onClick={onAdd}>+ Frase</FooterLink>
           <FooterLink onClick={onImport}>Importar</FooterLink>
           <FooterLink onClick={onCards}>Cartões</FooterLink>
           <FooterLink onClick={onProgress}>Progresso</FooterLink>
-          <FooterLink onClick={download}>Backup</FooterLink>
+          <FooterLink onClick={() => void downloadBackup()}>Backup</FooterLink>
           <FooterLink onClick={onSettings}>Ajustes</FooterLink>
         </nav>
         <span className="whitespace-nowrap">
@@ -185,13 +179,9 @@ export function Home({
   )
 }
 
-/** No toque o alvo precisa ser maior que a altura da fonte — daí o py-2 no mobile. */
 function FooterLink({ onClick, children }: { onClick: () => void; children: string }) {
   return (
-    <button
-      onClick={onClick}
-      className="whitespace-nowrap py-2 text-left transition hover:text-signal sm:py-0"
-    >
+    <button onClick={onClick} className="whitespace-nowrap text-left transition hover:text-signal">
       {children}
     </button>
   )

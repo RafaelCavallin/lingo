@@ -4,6 +4,7 @@ import { setVoice, setSpeechRate, speech, normalRate, usingNeuralVoice } from '.
 import { lastSyncAt, syncNow } from '../services/sync'
 import { useAuth } from '../contexts/AuthContext'
 import { MIN_REVIEWS, NotEnoughData, optimize, reviewCount } from '../services/optimizer'
+import { MobileNav } from '../components/MobileNav'
 
 const SAMPLE = 'This is how your sentences will sound.'
 
@@ -105,8 +106,9 @@ export function Settings({
 
   return (
     <div className="mx-auto flex min-h-dvh max-w-2xl flex-col px-5 pb-14 pt-6">
-      <header className="font-mono text-xs text-muted">
+      <header className="flex items-center justify-between font-mono text-xs text-muted">
         <button onClick={onBack} className="hover:text-text">← Início</button>
+        <MobileNav />
       </header>
 
       <main className="flex-1 py-8">

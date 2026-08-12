@@ -3,6 +3,7 @@ import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis } from 'rechar
 import { db, type Deck } from '../services/db'
 import { computeStats, paceAdvice, type Stats } from '../services/stats'
 import { Heatmap } from '../components/Heatmap'
+import { MobileNav } from '../components/MobileNav'
 
 export function Progress({ deck, onBack }: { deck: Deck; onBack: () => void }) {
   const [stats, setStats] = useState<Stats | null>(null)
@@ -144,8 +145,9 @@ export function Progress({ deck, onBack }: { deck: Deck; onBack: () => void }) {
 function Frame({ children, onBack }: { children: React.ReactNode; onBack: () => void }) {
   return (
     <div className="mx-auto flex min-h-dvh max-w-2xl flex-col px-5 pb-14 pt-6">
-      <header className="font-mono text-xs text-muted">
+      <header className="flex items-center justify-between font-mono text-xs text-muted">
         <button onClick={onBack} className="hover:text-text">← Início</button>
+        <MobileNav />
       </header>
       <main className="flex-1 py-8">{children}</main>
     </div>
