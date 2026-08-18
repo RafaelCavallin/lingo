@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { deleteCard, liveCards, type Card, type Deck } from '../services/db'
 import { MobileNav } from '../components/MobileNav'
+import { EditCard } from './EditCard'
 
 /**
  * Um deck importado do Anki chega com milhares de cartões. Renderizar todos
@@ -17,6 +18,7 @@ export function Cards({ deck, onBack }: { deck: Deck; onBack: () => void }) {
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
+  const [editing, setEditing] = useState<Card | null>(null)
   const sentinelRef = useRef<HTMLLIElement>(null)
 
   const cards = useLiveQuery(() => liveCards(deck.id).reverse().sortBy('createdAt'), [deck.id])
@@ -26,7 +28,10 @@ export function Cards({ deck, onBack }: { deck: Deck; onBack: () => void }) {
     const q = query.trim().toLowerCase()
     if (!q) return cards
     return cards.filter(
-      (c) => c.sentence.toLowerCase().includes(q) || c.translation.toLowerCase().includes(q),
+      (c) =>
+        c.sentence.toLowerCase().includes(q) ||
+        c.translation.toLowerCase().includes(q) ||
+        (c.phonetic?.toLowerCase().includes(q) ?? false),
     )
   }, [cards, query])
 
@@ -74,6 +79,10 @@ export function Cards({ deck, onBack }: { deck: Deck; onBack: () => void }) {
     for (const id of selected) await deleteCard(id)
     setSelected(new Set())
   }
+
+  // Tela de edição dedicada no lugar da lista; a lista reflete a mudança
+  // sozinha ao voltar (useLiveQuery).
+  if (editing) return <EditCard card={editing} onDone={() => setEditing(null)} />
 
   return (
     <div className="mx-auto flex min-h-dvh max-w-2xl flex-col px-5 pb-14 pt-6">
@@ -134,6 +143,13 @@ export function Cards({ deck, onBack }: { deck: Deck; onBack: () => void }) {
                 <p className="truncate font-display text-lg leading-snug">{c.sentence}</p>
                 <p className="mt-1 truncate text-sm text-muted">{c.translation}</p>
               </div>
+              <button
+                onClick={() => setEditing(c)}
+                aria-label="Editar cartão"
+                className="shrink-0 rounded-full border border-line px-3 py-1.5 font-mono text-xs uppercase tracking-wider text-muted transition hover:border-signal hover:text-signal"
+              >
+                Editar
+              </button>
               <button
                 onClick={() => removeOne(c)}
                 aria-label="Excluir cartão"

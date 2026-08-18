@@ -3,6 +3,8 @@ import type { Hint } from './db'
 
 const schema = z.object({
   translation: z.string().min(1),
+  // Opcional de propósito: uma resposta sem fonética continua útil.
+  phonetic: z.string().max(160).default(''),
   hints: z
     .array(
       z.object({
@@ -16,6 +18,7 @@ const schema = z.object({
 
 export interface Enrichment {
   translation: string
+  phonetic: string
   hints: Hint[]
 }
 
@@ -63,6 +66,7 @@ export async function enrich(sentence: string, signal?: AbortSignal): Promise<En
       const parsed = schema.parse(await res.json())
       return {
         translation: parsed.translation,
+        phonetic: parsed.phonetic,
         hints: parsed.hints.map((h) => ({ ...h, source: 'ai' as const })),
       }
     } catch (e) {

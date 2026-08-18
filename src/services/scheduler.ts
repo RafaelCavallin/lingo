@@ -19,13 +19,20 @@ const toFsrsRating = (r: BinaryRating) => (r === 'again' ? Rating.Again : Rating
 const DAY = 86_400_000
 const YOUNG_STABILITY_DAYS = 21
 
-export function newCard(deckId: string, sentence: string, translation: string, hints: Card['hints']): Card {
+export function newCard(
+  deckId: string,
+  sentence: string,
+  translation: string,
+  hints: Card['hints'],
+  phonetic?: string,
+): Card {
   const empty = createEmptyCard(new Date())
   return {
     id: uid(),
     deckId,
     sentence: sentence.trim(),
     translation: translation.trim(),
+    phonetic: phonetic?.trim() || undefined,
     hints,
     due: empty.due.getTime(),
     stability: empty.stability,

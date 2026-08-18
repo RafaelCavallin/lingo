@@ -25,7 +25,11 @@ const SYSTEM = `Você ajuda um brasileiro a estudar inglês por frases inteiras.
 
 Receba uma frase em inglês e devolva:
 1. translation: tradução natural em português do Brasil. Traduza o sentido, não palavra por palavra.
-2. hints: de 0 a 3 dicas curtas que ajudem a fixar a frase. Só inclua uma dica se ela for
+2. phonetic: transcrição fonética em IPA (inglês americano) das palavras da frase cuja
+   pronúncia costuma trair quem lê pelo português — normalmente uma ou duas. Se a frase for
+   curta, transcreva a frase inteira. Escreva sem barras e sem colchetes, apenas os símbolos
+   (ex.: ˈbərd(ə)n). String vazia se nada na frase for digno de nota.
+3. hints: de 0 a 3 dicas curtas que ajudem a fixar a frase. Só inclua uma dica se ela for
    realmente útil para esta frase. Nunca invente conteúdo para preencher espaço.
 
 Tipos de dica:
@@ -37,7 +41,7 @@ Tipos de dica:
 Cada dica tem no máximo 90 caracteres, escrita em português, direta, sem rodeios.
 
 Responda SOMENTE com JSON válido, sem markdown, sem crases, sem texto antes ou depois:
-{"translation":"...","hints":[{"type":"phrasal_verb","text":"..."}]}`
+{"translation":"...","phonetic":"...","hints":[{"type":"phrasal_verb","text":"..."}]}`
 
 export default async function handler(req: Request): Promise<Response> {
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405)

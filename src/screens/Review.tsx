@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { deleteCard, type Card, type Deck } from '../services/db'
+import { db, deleteCard, type Card, type Deck } from '../services/db'
 import { answer, buildQueue } from '../services/scheduler'
 import { speech, normalRate, slowRate } from '../services/audio'
 import { Waveform } from '../components/Waveform'
 import { renderCloze } from '../components/ClozeEditor'
 import { VoiceCompare } from '../components/VoiceCompare'
+import { EditCard } from './EditCard'
 
 /** Fundo suficiente para cobrir a resposta mais rápida sem baixar a fila toda. */
 const PREFETCH_AHEAD = 2
@@ -16,6 +17,7 @@ export function Review({ deck, onDone }: { deck: Deck; onDone: () => void }) {
   const [playing, setPlaying] = useState(false)
   const [audioError, setAudioError] = useState<string | null>(null)
   const [done, setDone] = useState(0)
+  const [editing, setEditing] = useState(false)
   const shownAt = useRef(Date.now())
 
   const card = queue?.[index]
@@ -80,8 +82,20 @@ export function Review({ deck, onDone }: { deck: Deck; onDone: () => void }) {
     setQueue((q) => q?.filter((c) => c.id !== id) ?? q)
   }
 
+  // Editar não é responder: nada de answer()/FSRS aqui. Só recarrega o card
+  // do banco para a fila em memória mostrar o texto novo, e zera o relógio
+  // para o tempo gasto editando não inflar a duração da próxima resposta.
+  async function finishEdit() {
+    setEditing(false)
+    if (!card) return
+    const fresh = await db.cards.get(card.id)
+    if (fresh) setQueue((q) => q?.map((c) => (c.id === fresh.id ? fresh : c)) ?? q)
+    shownAt.current = Date.now()
+  }
+
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      if (editing) return
       if (e.code === 'Space') {
         e.preventDefault()
         revealed ? void rate('good') : setRevealed(true)
@@ -118,6 +132,8 @@ export function Review({ deck, onDone }: { deck: Deck; onDone: () => void }) {
     )
   }
 
+  if (editing) return <EditCard card={card} onDone={() => void finishEdit()} />
+
   return (
     <div className="mx-auto flex min-h-dvh max-w-2xl flex-col px-5 pb-[calc(2rem+env(safe-area-inset-bottom))] pt-6">
       <header className="flex items-center justify-between font-mono text-xs text-muted">
@@ -142,17 +158,35 @@ export function Review({ deck, onDone }: { deck: Deck; onDone: () => void }) {
             Ouça e tente entender. A frase aparece na resposta.
           </p>
         ) : (
-          <p className="mt-8 font-display text-3xl leading-snug sm:text-4xl">
-            {revealed ? card.sentence : renderCloze(card.sentence, card.clozeRanges)}
-          </p>
+          <>
+            <p className="mt-8 font-display text-3xl leading-snug sm:text-4xl">
+              {revealed ? card.sentence : renderCloze(card.sentence, card.clozeRanges)}
+            </p>
+            {/* Fora do ramo `listenFirst` de propósito: ali a frase está escondida
+                e a fonética entregaria a resposta. */}
+            {card.phonetic && (
+              <p className="mt-3 font-mono text-xl tracking-wide text-signal sm:text-2xl">
+                /{card.phonetic}/
+              </p>
+            )}
+          </>
         )}
 
         <div className="mt-6 flex flex-wrap items-center gap-2">
           <AudioButton onClick={() => play(normalRate())} label="Repetir" />
           <AudioButton onClick={() => play(slowRate())} label="Devagar" />
           <button
+            onClick={() => {
+              speech.stop()
+              setEditing(true)
+            }}
+            className="ml-auto rounded-full border border-line px-4 py-2 font-mono text-xs uppercase tracking-wider text-muted transition hover:border-signal hover:text-signal"
+          >
+            Editar
+          </button>
+          <button
             onClick={remove}
-            className="ml-auto rounded-full border border-line px-4 py-2 font-mono text-xs uppercase tracking-wider text-muted transition hover:border-miss hover:text-miss"
+            className="rounded-full border border-line px-4 py-2 font-mono text-xs uppercase tracking-wider text-muted transition hover:border-miss hover:text-miss"
           >
             Excluir
           </button>

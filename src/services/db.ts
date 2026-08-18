@@ -34,6 +34,8 @@ export interface Card {
   deckId: string
   sentence: string
   translation: string
+  /** Transcrição fonética, sem barras — `ˈbərd(ə)n`. Ausente quando vazia. */
+  phonetic?: string
   hints: Hint[]
   clozeRanges?: { start: number; end: number }[]
   // Estado FSRS — sempre escrito pelo scheduler, nunca à mão.
@@ -261,6 +263,40 @@ export async function deleteCard(cardId: string): Promise<void> {
     await db.cards.update(cardId, { deletedAt: now, updatedAt: now })
     const blobs = await db.audioBlobs.where('cardId').equals(cardId).toArray()
     await db.audioBlobs.bulkDelete(blobs.map((b) => b.id))
+  })
+}
+
+/**
+ * Edita só o conteúdo do cartão — os campos FSRS são território exclusivo do
+ * scheduler: editar uma frase não é uma resposta e não pode mexer no
+ * agendamento nem gerar reviewLog. Se a frase mudou, todo áudio do card cai
+ * (TTS e gravações do usuário narram o texto antigo); a UI re-aquece o TTS.
+ */
+export async function updateCard(
+  cardId: string,
+  changes: {
+    sentence: string
+    translation: string
+    phonetic?: string
+    hints: Hint[]
+    clozeRanges?: { start: number; end: number }[]
+  },
+): Promise<void> {
+  await db.transaction('rw', db.cards, db.audioBlobs, async () => {
+    const current = await db.cards.get(cardId)
+    if (!current) return
+    await db.cards.update(cardId, {
+      sentence: changes.sentence,
+      translation: changes.translation,
+      phonetic: changes.phonetic?.trim() || undefined,
+      hints: changes.hints,
+      clozeRanges: changes.clozeRanges?.length ? changes.clozeRanges : undefined,
+      updatedAt: Date.now(),
+    })
+    if (changes.sentence !== current.sentence) {
+      const blobs = await db.audioBlobs.where('cardId').equals(cardId).toArray()
+      await db.audioBlobs.bulkDelete(blobs.map((b) => b.id))
+    }
   })
 }
 

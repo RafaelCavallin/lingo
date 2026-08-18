@@ -26,6 +26,7 @@ function validCardRow() {
     deck_id: 'deck-1',
     sentence: 'Hello there',
     translation: 'Olá',
+    phonetic: null,
     hints: [],
     cloze_ranges: null,
     due: 1000,
@@ -125,6 +126,16 @@ describe('parseCardRow', () => {
 
   it('returns null for a malformed row', () => {
     expect(parseCardRow({ ...validCardRow(), hints: 'not-an-array' })).toBeNull()
+  })
+
+  it('faz ida e volta da fonética, e trata vazio como null no envio', () => {
+    expect(parseCardRow(validCardRow())!.row.phonetic).toBeUndefined()
+
+    const parsed = parseCardRow({ ...validCardRow(), phonetic: 'ˈbərd(ə)n' })!
+    expect(parsed.row.phonetic).toBe('ˈbərd(ə)n')
+    expect(toCardRow(parsed.row).phonetic).toBe('ˈbərd(ə)n')
+
+    expect(toCardRow(parseCardRow(validCardRow())!.row).phonetic).toBeNull()
   })
 })
 
