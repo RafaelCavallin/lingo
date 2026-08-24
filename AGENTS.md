@@ -76,6 +76,8 @@ O alias `lingo-git-des-…` sempre aponta para o deploy mais recente da branch `
 
 Atenção ao mapa de branches: `prod` é a branch de produção, `des` é a de desenvolvimento. A `main` **não** dispara deploy de produção.
 
+Nada sobe para produção automaticamente, e essa é uma decisão deliberada: **só se promove para a `prod` o que já foi validado 100% no preview da `des`**. Push na `des` não promove nada, merge na `main` não promove nada — produção só muda quando alguém mergeia na `prod` à mão. Migration em produção também é sempre manual e vem antes do deploy. O roteiro completo está em [atualizar-producao.md](atualizar-producao.md); nenhum agente deve executá-lo por conta própria.
+
 O `.env` versionado aponta para o local de propósito: é a rede de segurança caso o `.env.local` seja apagado.
 
 Consequências práticas:
@@ -92,7 +94,7 @@ Consequências práticas:
 
 1. Valida no local: `npx supabase db reset` (recria do zero e reaplica tudo).
 2. Aplica no `lingo-dev`: `npx supabase db push --db-url "postgresql://postgres:<senha>@db.jmswqnwghtlpxsvellar.supabase.co:5432/postgres"`.
-3. Só ao mergear na `main`, aplica em produção com a URL do projeto de produção.
+3. Em produção, **nunca automaticamente**: só à mão, depois de a mudança ter sido validada de ponta a ponta no preview da `des`, e sempre antes do deploy que depende dela. Passo a passo em [atualizar-producao.md](atualizar-producao.md).
 
 Use sempre `--db-url` explícito em vez de `supabase link` + `db push`: o link deste repositório aponta para **produção**, então um `db push --linked` distraído escreve no banco real.
 
