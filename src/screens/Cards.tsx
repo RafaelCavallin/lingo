@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { deleteCard, liveCards, type Card, type Deck } from '../services/db'
 import { MobileNav } from '../components/MobileNav'
+import { MarkedText } from '../components/MarkedText'
 import { EditCard } from './EditCard'
 
 /**
@@ -140,8 +141,12 @@ export function Cards({ deck, onBack }: { deck: Deck; onBack: () => void }) {
                 aria-label="Selecionar cartão"
               />
               <div className="min-w-0 flex-1">
-                <p className="truncate font-display text-lg leading-snug">{c.sentence}</p>
-                <p className="mt-1 truncate text-sm text-muted">{c.translation}</p>
+                <p className="truncate font-display text-lg leading-snug">
+                  <MarkedText text={c.sentence} emphasis={c.emphasisRanges} />
+                </p>
+                <p className="mt-1 truncate text-sm text-muted">
+                  <MarkedText text={c.translation} emphasis={c.translationEmphasisRanges} />
+                </p>
               </div>
               <button
                 onClick={() => setEditing(c)}

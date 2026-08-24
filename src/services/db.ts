@@ -38,6 +38,10 @@ export interface Card {
   phonetic?: string
   hints: Hint[]
   clozeRanges?: { start: number; end: number }[]
+  /** Trechos em destaque na frase — mesmos offsets, nunca sobrepostos às lacunas. */
+  emphasisRanges?: { start: number; end: number }[]
+  /** Trechos em destaque na tradução. */
+  translationEmphasisRanges?: { start: number; end: number }[]
   // Estado FSRS — sempre escrito pelo scheduler, nunca à mão.
   due: number
   stability: number
@@ -280,6 +284,8 @@ export async function updateCard(
     phonetic?: string
     hints: Hint[]
     clozeRanges?: { start: number; end: number }[]
+    emphasisRanges?: { start: number; end: number }[]
+    translationEmphasisRanges?: { start: number; end: number }[]
   },
 ): Promise<void> {
   await db.transaction('rw', db.cards, db.audioBlobs, async () => {
@@ -291,6 +297,10 @@ export async function updateCard(
       phonetic: changes.phonetic?.trim() || undefined,
       hints: changes.hints,
       clozeRanges: changes.clozeRanges?.length ? changes.clozeRanges : undefined,
+      emphasisRanges: changes.emphasisRanges?.length ? changes.emphasisRanges : undefined,
+      translationEmphasisRanges: changes.translationEmphasisRanges?.length
+        ? changes.translationEmphasisRanges
+        : undefined,
       updatedAt: Date.now(),
     })
     if (changes.sentence !== current.sentence) {

@@ -29,6 +29,8 @@ function validCardRow() {
     phonetic: null,
     hints: [],
     cloze_ranges: null,
+    emphasis_ranges: null,
+    translation_emphasis_ranges: null,
     due: 1000,
     stability: 1,
     difficulty: 5,
@@ -128,6 +130,34 @@ describe('parseCardRow', () => {
     expect(parseCardRow({ ...validCardRow(), hints: 'not-an-array' })).toBeNull()
   })
 
+  it('faz ida e volta dos destaques', () => {
+    const parsed = parseCardRow(validCardRow())!
+    expect(parsed.row.emphasisRanges).toBeUndefined()
+    expect(parsed.row.translationEmphasisRanges).toBeUndefined()
+
+    const raw = {
+      ...validCardRow(),
+      emphasis_ranges: [{ start: 0, end: 5 }],
+      translation_emphasis_ranges: [{ start: 1, end: 3 }],
+    }
+    const withValues = parseCardRow(raw)!
+    expect(withValues.row.emphasisRanges).toEqual([{ start: 0, end: 5 }])
+    expect(withValues.row.translationEmphasisRanges).toEqual([{ start: 1, end: 3 }])
+    expect(toCardRow(withValues.row).emphasis_ranges).toEqual([{ start: 0, end: 5 }])
+    expect(toCardRow(withValues.row).translation_emphasis_ranges).toEqual([{ start: 1, end: 3 }])
+  })
+
+  // Servidor ainda sem a migration da ênfase: as colunas nem vêm na linha, e
+  // isso não pode derrubar o cartão inteiro no parse.
+  it('aceita a linha sem as colunas de destaque', () => {
+    const { emphasis_ranges, translation_emphasis_ranges, ...row } = validCardRow()
+    void emphasis_ranges
+    void translation_emphasis_ranges
+    const parsed = parseCardRow(row)
+    expect(parsed).not.toBeNull()
+    expect(parsed!.row.emphasisRanges).toBeUndefined()
+  })
+
   it('faz ida e volta da fonética, e trata vazio como null no envio', () => {
     expect(parseCardRow(validCardRow())!.row.phonetic).toBeUndefined()
 
@@ -202,6 +232,8 @@ describe('toDeckRow / toCardRow / toLogRow', () => {
     const cardRow = toCardRow(card) as Record<string, unknown>
     expect(cardRow.deck_id).toBe('deck-1')
     expect(cardRow.cloze_ranges).toBeNull()
+    expect(cardRow.emphasis_ranges).toBeNull()
+    expect(cardRow.translation_emphasis_ranges).toBeNull()
     expect(cardRow.last_review).toBeNull()
     expect(cardRow).not.toHaveProperty('dirty')
 

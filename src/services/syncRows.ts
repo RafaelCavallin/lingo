@@ -41,6 +41,11 @@ const cardRow = z.object({
   phonetic: z.string().nullable(),
   hints: z.array(hint),
   cloze_ranges: z.array(z.object({ start: z.number(), end: z.number() })).nullable(),
+  // `.nullish()` e não `.nullable()`: um servidor que ainda não recebeu a
+  // migration da ênfase devolve a linha sem estas chaves, e aí o parse estrito
+  // descartaria *todos* os cartões do pull por causa de um campo opcional.
+  emphasis_ranges: z.array(z.object({ start: z.number(), end: z.number() })).nullish(),
+  translation_emphasis_ranges: z.array(z.object({ start: z.number(), end: z.number() })).nullish(),
   due: z.number(),
   stability: z.number(),
   difficulty: z.number(),
@@ -105,6 +110,8 @@ export function parseCardRow(raw: unknown): Parsed<Card> | null {
       phonetic: c.phonetic ?? undefined,
       hints: c.hints,
       clozeRanges: c.cloze_ranges ?? undefined,
+      emphasisRanges: c.emphasis_ranges ?? undefined,
+      translationEmphasisRanges: c.translation_emphasis_ranges ?? undefined,
       due: c.due,
       stability: c.stability,
       difficulty: c.difficulty,
@@ -172,6 +179,8 @@ export function toCardRow(c: Card) {
     phonetic: c.phonetic || null,
     hints: c.hints,
     cloze_ranges: c.clozeRanges ?? null,
+    emphasis_ranges: c.emphasisRanges ?? null,
+    translation_emphasis_ranges: c.translationEmphasisRanges ?? null,
     due: c.due,
     stability: c.stability,
     difficulty: c.difficulty,

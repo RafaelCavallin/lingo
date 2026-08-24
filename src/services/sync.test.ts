@@ -93,6 +93,49 @@ function makeLocalLog(overrides: Partial<ReviewLog> = {}): ReviewLog {
   }
 }
 
+function remoteCardRow(overrides: Partial<Record<string, unknown>> = {}) {
+  return {
+    id: 'c1',
+    deck_id: 'd1',
+    sentence: 'Remote sentence',
+    translation: 'Frase remota',
+    phonetic: null,
+    hints: [],
+    cloze_ranges: null,
+    emphasis_ranges: null,
+    translation_emphasis_ranges: null,
+    due: 1000,
+    stability: 1,
+    difficulty: 5,
+    elapsed_days: 0,
+    scheduled_days: 0,
+    reps: 0,
+    lapses: 0,
+    state: 0,
+    last_review: null,
+    created_at: 1000,
+    updated_at: 2000,
+    deleted_at: 0,
+    synced_at: '2026-01-01T00:00:00.000Z',
+    ...overrides,
+  }
+}
+
+function remoteLogRow(overrides: Partial<Record<string, unknown>> = {}) {
+  return {
+    id: 'l1',
+    card_id: 'c1',
+    deck_id: 'd1',
+    rating: 'good',
+    reviewed_at: 1000,
+    state_before: 0,
+    scheduled_days: 1,
+    duration_ms: 500,
+    synced_at: '2026-01-01T00:00:00.000Z',
+    ...overrides,
+  }
+}
+
 beforeEach(() => {
   fakeSupabase = createFakeSupabase()
   syncConfigured = true
@@ -241,6 +284,116 @@ describe('syncNow — pull cursor / overlap window', () => {
     // OVERLAP_MS = 5_000 (sync.ts) — cursor rebobina 5s para não perder linhas
     // commitadas entre o início e o fim da transação remota.
     expect(gtOp).toEqual(['gt', 'synced_at', '2026-01-01T00:00:05.000Z'])
+  })
+})
+
+describe('syncNow — pull / cards and review logs', () => {
+  beforeEach(async () => {
+    await bindUser('user-A')
+    fakeSupabase.setSession({ user: { id: 'user-A' } })
+  })
+
+  it('adopts a remote card that does not exist locally yet', async () => {
+    fakeSupabase.queueResolution('cards', { data: [remoteCardRow()], error: null })
+
+    await syncNow('manual')
+
+    const card = await db.cards.get('c1')
+    expect(card?.sentence).toBe('Remote sentence')
+    expect(card?.dirty).toBe(0)
+  })
+
+  it('overwrites the local card when the remote one is newer', async () => {
+    await db.cards.add(makeLocalCard({ sentence: 'Local sentence', updatedAt: 1000 }))
+    fakeSupabase.queueResolution('cards', {
+      data: [remoteCardRow({ updated_at: 2000 })],
+      error: null,
+    })
+
+    await syncNow('manual')
+
+    expect((await db.cards.get('c1'))?.sentence).toBe('Remote sentence')
+  })
+
+  it('keeps the local card when the remote one is older or ties', async () => {
+    await db.cards.bulkAdd([
+      makeLocalCard({ id: 'c1', sentence: 'Local newer', updatedAt: 3000 }),
+      makeLocalCard({ id: 'c2', sentence: 'Local tie', updatedAt: 2000 }),
+    ])
+    fakeSupabase.queueResolution('cards', {
+      data: [remoteCardRow({ id: 'c1', updated_at: 2000 }), remoteCardRow({ id: 'c2', updated_at: 2000 })],
+      error: null,
+    })
+
+    await syncNow('manual')
+
+    expect((await db.cards.get('c1'))?.sentence).toBe('Local newer')
+    expect((await db.cards.get('c2'))?.sentence).toBe('Local tie')
+  })
+
+  it('applies the remote tombstone of a deleted card', async () => {
+    await db.cards.add(makeLocalCard({ updatedAt: 1000, deletedAt: 0 }))
+    fakeSupabase.queueResolution('cards', {
+      data: [remoteCardRow({ updated_at: 5000, deleted_at: 4000 })],
+      error: null,
+    })
+
+    await syncNow('manual')
+
+    expect((await db.cards.get('c1'))?.deletedAt).toBe(4000)
+  })
+
+  it('stores the cursor of the last card page', async () => {
+    fakeSupabase.queueResolution('cards', {
+      data: [remoteCardRow({ synced_at: '2026-01-01T00:00:20.000Z' })],
+      error: null,
+    })
+
+    await syncNow('manual')
+
+    expect((await db.syncState.get('cursor:cards'))?.value).toBe('2026-01-01T00:00:20.000Z')
+  })
+
+  it('adopts remote review logs that are missing locally', async () => {
+    fakeSupabase.queueResolution('review_logs', { data: [remoteLogRow()], error: null })
+
+    await syncNow('manual')
+
+    const log = await db.reviewLogs.get('l1')
+    expect(log).toMatchObject({ cardId: 'c1', deckId: 'd1', rating: 'good', dirty: 0 })
+  })
+
+  it('never rewrites a review log it already has', async () => {
+    await db.reviewLogs.add(makeLocalLog({ id: 'l1', durationMs: 111 }))
+    fakeSupabase.queueResolution('review_logs', {
+      data: [remoteLogRow({ id: 'l1', duration_ms: 999 })],
+      error: null,
+    })
+
+    await syncNow('manual')
+
+    expect((await db.reviewLogs.get('l1'))?.durationMs).toBe(111)
+    expect(await db.reviewLogs.count()).toBe(1)
+  })
+
+  it('skips malformed remote rows without losing the rest of the page', async () => {
+    fakeSupabase.queueResolution('cards', {
+      data: [remoteCardRow({ id: 'c1' }), { id: 'quebrada', deck_id: null }],
+      error: null,
+    })
+
+    const result = await syncNow('manual')
+
+    expect(result.status).toBe('ok')
+    expect(await db.cards.count()).toBe(1)
+  })
+
+  it('leaves the cursor untouched when a page comes back empty', async () => {
+    fakeSupabase.queueResolution('cards', { data: [], error: null })
+
+    await syncNow('manual')
+
+    expect(await db.syncState.get('cursor:cards')).toBeUndefined()
   })
 })
 

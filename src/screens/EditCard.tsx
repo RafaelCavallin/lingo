@@ -4,8 +4,24 @@ import { CardForm, type CardFormValues } from '../components/CardForm'
 import { MobileNav } from '../components/MobileNav'
 
 export function EditCard({ card, onDone }: { card: Card; onDone: () => void }) {
-  async function save({ sentence, translation, phonetic, hints, clozeRanges }: CardFormValues) {
-    await updateCard(card.id, { sentence, translation, phonetic, hints, clozeRanges })
+  async function save({
+    sentence,
+    translation,
+    phonetic,
+    hints,
+    clozeRanges,
+    emphasisRanges,
+    translationEmphasisRanges,
+  }: CardFormValues) {
+    await updateCard(card.id, {
+      sentence,
+      translation,
+      phonetic,
+      hints,
+      clozeRanges,
+      emphasisRanges,
+      translationEmphasisRanges,
+    })
     // Frase nova = TTS antigo já caiu no updateCard; re-aquece o cache.
     if (sentence !== card.sentence) void speech.warm(card.id, sentence)
     onDone()
@@ -29,6 +45,8 @@ export function EditCard({ card, onDone }: { card: Card; onDone: () => void }) {
           phonetic: card.phonetic ?? '',
           hints: card.hints,
           clozeRanges: card.clozeRanges ?? [],
+          emphasisRanges: card.emphasisRanges ?? [],
+          translationEmphasisRanges: card.translationEmphasisRanges ?? [],
         }}
         onSubmit={save}
       />

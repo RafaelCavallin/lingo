@@ -2,19 +2,12 @@
 
 Guia rápido para qualquer agente/LLM trabalhando neste repositório. Para a explicação detalhada de cada arquivo/componente, veja [ARQUITETURA.md](ARQUITETURA.md); para a visão de produto, veja [README.md](README.md).
 
-## Mapa das pastas
+## Regras
 
-| Pasta | Papel | Tecnologias |
-| --- | --- | --- |
-| `src/` | **Frontend** — SPA React que roda 100% no navegador, offline-first, instalável como PWA. | React 18 + TypeScript + Vite, Tailwind CSS, Dexie (IndexedDB), ts-fsrs |
-| `src/services/` | Toda a lógica de negócio e acesso a dados (sem JSX) — nunca importa React. | Dexie, ts-fsrs, Zod, Supabase JS |
-| `src/screens/`, `src/components/`, `src/contexts/` | Camada de UI: uma tela por caso de uso, componentes reutilizáveis, estado global (sessão + baralho ativo). | React |
-| `src/workers/` | Web Worker que roda o otimizador do FSRS em wasm, fora da thread principal. | fsrs-browser (wasm) |
-| `api/` | **Backend** — funções serverless (Edge Functions), sem servidor próprio. Só existem para esconder chaves de API; não persistem nada. | Vercel Edge Runtime (Fetch API padrão, sem Node) |
-| `supabase/migrations/` | Schema do Postgres (tabelas `decks`/`cards`/`review_logs`), RLS e a RPC `sync_push` usada pela sincronização entre aparelhos. | Postgres (via Supabase) |
-| `supabase/` (resto) | Config local da CLI do Supabase (`config.toml`) e artefatos gerados — não editar `.temp/`, `pgdelta/`. | Supabase CLI |
-
-A conta/sincronização é **opcional**: sem Supabase configurado, o app funciona 100% offline com Dexie local. O `api/` e o `supabase/` só entram em jogo se o usuário configurar chaves.
+- [.agents/rules/code-standards.md](.agents/rules/code-standards.md) — padrões de codificação obrigatórios (tamanho de arquivos/funções, cláusulas de guarda, objetos de parâmetro, constantes nomeadas, segredos fora do código). Leia antes de escrever ou alterar qualquer código.
+- [.agents/rules/javascript-typescript.md](.agents/rules/javascript-typescript.md) — regras de linguagem (`const` sobre `let`, nunca `var`, sempre `===`, nunca `any`, tipagem de parâmetros/retornos, arrow em callbacks, ternário sem aninhamento) e a verificação a rodar ao fim de cada tarefa.
+- [.agents/rules/tests.md](.agents/rules/tests.md) — regras de testes obrigatórias (cobertura mínima de 80%, prioridade pelo que é crítico, pirâmide de testes, princípios FIRST, estrutura AAA/Given-When-Then, Vitest + Playwright). **Todo código deve entrar com teste automatizado** — leia antes de escrever qualquer código ou teste.
+- [.agents/rules/folder-structure.md](.agents/rules/folder-structure.md) — estrutura de pastas: o que mora em cada uma, as regras de dependência entre camadas e onde colocar cada arquivo novo. Leia antes de criar qualquer arquivo.
 
 ## Onde cada coisa roda (portas)
 
@@ -53,10 +46,55 @@ Requer `.env` preenchido a partir de `.env.example` (ver seção abaixo). Sem is
 
 ```bash
 npx supabase start   # sobe Postgres + Auth + Studio locais (ver portas acima)
-npx supabase db push # aplica as migrations de supabase/migrations/
+npx supabase stop    # derruba; os dados ficam salvos no volume do Docker
 ```
 
-Preencha `VITE_SUPABASE_URL` e `VITE_SUPABASE_PUBLISHABLE_KEY` no `.env` com os valores impressos por `supabase start` (ou os de um projeto hospedado).
+`start` já aplica as migrations de `supabase/migrations/` sozinho (`db.migrations.enabled = true` no `config.toml`) — `db push` só é necessário contra um projeto hospedado. Para zerar o banco e reaplicar tudo do zero, use `npx supabase db reset`.
+
+`VITE_SUPABASE_URL` e `VITE_SUPABASE_PUBLISHABLE_KEY` já vêm preenchidos com os valores locais (ver a seção abaixo); reimprima-os a qualquer momento com `npx supabase status`.
+
+Se `start` falhar com `port is already allocated`, há outro projeto Supabase local ocupando as portas. Derrube-o de qualquer diretório com `npx supabase stop --project-id <id-do-outro-projeto>` — sem `--no-backup`, os dados dele são preservados.
+
+## Isolamento entre desenvolvimento e produção
+
+Desenvolvimento **nunca** fala com o banco de produção. São três bancos distintos, selecionados só por variáveis de ambiente:
+
+| Ambiente | Banco | Quem usa |
+| --- | --- | --- |
+| Local | Supabase em Docker (`127.0.0.1:54321`) | `npm run dev`, `npx vercel dev` — via `.env.local`, que tem prioridade sobre `.env` no Vite |
+| Preview | projeto hospedado `lingo-dev` (`jmswqnwghtlpxsvellar`) | preview deploys de qualquer branch — via escopos Preview/Development da Vercel |
+| Produção | projeto hospedado `supabase-gray-compass` (`uglvzvfgrnzoyfeotter`) | só o deploy da branch **`prod`** — via escopo Production da Vercel |
+
+### URLs
+
+| Ambiente | URL | Acesso |
+| --- | --- | --- |
+| Produção | `https://lingo-mu-nine.vercel.app` | público, sem login |
+| Preview da `des` | `https://lingo-git-des-rafaelcavallin89-3287s-projects.vercel.app` | exige login na Vercel (Deployment Protection) |
+
+O alias `lingo-git-des-…` sempre aponta para o deploy mais recente da branch `des`. Não há domínio customizado; `lingo-mu-nine.vercel.app` é o domínio de produção gerado pela Vercel.
+
+Atenção ao mapa de branches: `prod` é a branch de produção, `des` é a de desenvolvimento. A `main` **não** dispara deploy de produção.
+
+O `.env` versionado aponta para o local de propósito: é a rede de segurança caso o `.env.local` seja apagado.
+
+Consequências práticas:
+
+- As credenciais de produção **não moram no repositório**. Ficam na Vercel (escopo Production); há uma cópia local em `.env.vercel-prod.bak` (ignorada pelo git).
+- **Nunca rode `npx vercel env pull` sem argumento**: ele sobrescreve o `.env.local` com valores remotos e fura o isolamento. Puxe para outro nome: `npx vercel env pull .env.vercel-prod.bak`.
+- O projeto de produção pertence à organização gerenciada pela integração Supabase da **Vercel Marketplace**, que injeta credenciais nos três escopos de uma vez — foi assim que Preview e Development passaram a apontar para produção. O `lingo-dev` foi criado fora dessa organização justamente para ficar fora do alcance dela. Se algum dia a integração for reconfigurada, **confira `npx vercel env ls` depois**.
+- As demais variáveis que a integração injetou (`SUPABASE_SERVICE_ROLE_KEY`, `POSTGRES_*`, `NEXT_PUBLIC_*`) não são lidas por nenhum código deste repositório — `api/` só usa `ENRICH_*`, `OPENAI_API_KEY` e `TTS_*`.
+- Contas são por projeto Supabase, então a conta de estudo real não existe nem no local nem no `lingo-dev` — crie um usuário de teste em cada. No local, os e-mails de confirmação chegam no Inbucket (`http://localhost:54324`), não na caixa de entrada real.
+- O IndexedDB do navegador já é isolado por origem: `localhost:5173`, a URL de preview e o domínio de produção têm bancos locais separados sem nenhuma configuração.
+- O `lingo-dev` está no free tier e **hiberna após cerca de uma semana sem acesso**; despausar é um clique no dashboard do Supabase.
+
+### Fluxo de uma migration nova
+
+1. Valida no local: `npx supabase db reset` (recria do zero e reaplica tudo).
+2. Aplica no `lingo-dev`: `npx supabase db push --db-url "postgresql://postgres:<senha>@db.jmswqnwghtlpxsvellar.supabase.co:5432/postgres"`.
+3. Só ao mergear na `main`, aplica em produção com a URL do projeto de produção.
+
+Use sempre `--db-url` explícito em vez de `supabase link` + `db push`: o link deste repositório aponta para **produção**, então um `db push --linked` distraído escreve no banco real.
 
 ## Variáveis de ambiente
 
@@ -64,7 +102,7 @@ Copiar `.env.example` para `.env` e preencher o que for necessário — tudo é 
 
 - `ENRICH_PROVIDER` (`anthropic` padrão ou `gemini`) + `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` — geração automática de tradução/dicas.
 - `OPENAI_API_KEY` + `TTS_VOICE` / `TTS_MODEL` — voz neural.
-- `VITE_SUPABASE_URL` + `VITE_SUPABASE_PUBLISHABLE_KEY` — contas e sincronização. Essas duas vão para o bundle do cliente por design; **nunca** colocar `SUPABASE_SECRET_KEY`/`SUPABASE_SERVICE_ROLE_KEY` aqui.
+- `VITE_SUPABASE_URL` + `VITE_SUPABASE_PUBLISHABLE_KEY` — contas e sincronização. Essas duas vão para o bundle do cliente por design; **nunca** colocar `SUPABASE_SECRET_KEY`/`SUPABASE_SERVICE_ROLE_KEY` aqui. Em desenvolvimento apontam para o banco local — ver "Isolamento entre desenvolvimento e produção" acima.
 
 ## Build
 
@@ -73,14 +111,18 @@ npm run build        # tsc -b (type-check) + vite build de produção
 npm run preview       # serve o build de produção localmente, para conferir antes de deployar
 ```
 
-`npm run build` falha se houver erro de tipo — é o mesmo check que roda no CI (`.github/workflows/ci.yml`, junto de `lint`/`test`) e no deploy da Vercel.
+`npm run build` falha se houver erro de tipo — é o mesmo check que roda no CI (`.github/workflows/ci.yml`, junto de `lint`/`test:coverage`) e no deploy da Vercel.
 
 ## Testes
 
 ```bash
-npm test        # Vitest (jsdom), roda uma vez e sai
+npm test             # Vitest (jsdom), roda uma vez e sai
+npm run test:coverage # o mesmo, com relatório de cobertura e o piso de 80%
 ```
 
-Cobre a lógica de negócio mais arriscada do projeto — `services/sync.ts` (LWW, paginação por keyset, CAS no clearDirty, ordem cards-antes-de-logs no push, mutex de `navigator.locks`), `services/auth.ts` (os 4 ramos de `decideOnSignIn`, `completeSignIn`) e `services/syncRows.ts` (parse/serialize) — usando `fake-indexeddb` (Dexie real em memória) e um fake `SupabaseClient` escrito à mão (`src/test/fakeSupabase.ts`), sem mexer no código de produção para isso.
+As regras que todo teste deve seguir estão em [.agents/rules/tests.md](.agents/rules/tests.md) — cobertura mínima de 80%, princípios FIRST e estrutura AAA.
 
-**Não cobre UI/telas** (sem `@testing-library`/Playwright) — validação de componentes React continua manual (`npm run dev` ou `npx vercel dev`), junto do type-check via `npm run build`.
+Cobre toda a lógica de negócio de `src/services/` — sincronização (LWW, paginação por keyset, CAS no clearDirty, ordem cards-antes-de-logs no push, mutex de `navigator.locks`), autenticação, parse/serialize das linhas remotas, agendamento FSRS, estatísticas, áudio/TTS com fallback, gravação, importação do Anki, otimizador e as migrations do banco local — usando `fake-indexeddb` (Dexie real em memória), um fake `SupabaseClient` escrito à mão (`src/test/fakeSupabase.ts`) e stubs das APIs do navegador, sem mexer no código de produção para isso.
+
+**Não cobre UI/telas** (sem `@testing-library`/Playwright), e por isso `src/screens/`, `src/components/*.tsx` e `src/contexts/` ficam fora do escopo medido pela cobertura. A validação de componentes React continua manual (`npm run dev` ou `npx vercel dev`), junto do type-check via `npm run build`.
+

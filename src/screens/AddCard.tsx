@@ -8,9 +8,19 @@ import { MobileNav } from '../components/MobileNav'
 export function AddCard({ deck, onBack }: { deck: Deck; onBack: () => void }) {
   const [saved, setSaved] = useState(0)
 
-  async function save({ sentence, translation, phonetic, hints, clozeRanges }: CardFormValues) {
+  async function save({
+    sentence,
+    translation,
+    phonetic,
+    hints,
+    clozeRanges,
+    emphasisRanges,
+    translationEmphasisRanges,
+  }: CardFormValues) {
     const card = newCard(deck.id, sentence, translation, hints, phonetic)
     if (clozeRanges.length) card.clozeRanges = clozeRanges
+    if (emphasisRanges.length) card.emphasisRanges = emphasisRanges
+    if (translationEmphasisRanges.length) card.translationEmphasisRanges = translationEmphasisRanges
     await db.cards.add(card)
     void speech.warm(card.id, card.sentence)
     setSaved((n) => n + 1)

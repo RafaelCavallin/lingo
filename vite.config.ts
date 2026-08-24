@@ -17,6 +17,15 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
+    coverage: {
+      provider: 'v8',
+      // A camada de UI (screens/components React, contexts) fica fora do gate:
+      // ela é validada por e2e no Playwright, não por cobertura de unidade.
+      include: ['src/services/**/*.ts', 'src/components/textMarks.ts'],
+      exclude: ['**/*.test.ts'],
+      thresholds: { statements: 80, branches: 80, functions: 80, lines: 80 },
+      reporter: ['text', 'html'],
+    },
   },
   plugins: [
     react(),

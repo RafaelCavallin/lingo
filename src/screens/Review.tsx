@@ -3,7 +3,7 @@ import { db, deleteCard, type Card, type Deck } from '../services/db'
 import { answer, buildQueue } from '../services/scheduler'
 import { speech, normalRate, slowRate } from '../services/audio'
 import { Waveform } from '../components/Waveform'
-import { renderCloze } from '../components/ClozeEditor'
+import { MarkedText } from '../components/MarkedText'
 import { VoiceCompare } from '../components/VoiceCompare'
 import { EditCard } from './EditCard'
 
@@ -160,7 +160,12 @@ export function Review({ deck, onDone }: { deck: Deck; onDone: () => void }) {
         ) : (
           <>
             <p className="mt-8 font-display text-3xl leading-snug sm:text-4xl">
-              {revealed ? card.sentence : renderCloze(card.sentence, card.clozeRanges)}
+              <MarkedText
+                text={card.sentence}
+                cloze={card.clozeRanges}
+                emphasis={card.emphasisRanges}
+                hideCloze={!revealed}
+              />
             </p>
             {/* Fora do ramo `listenFirst` de propósito: ali a frase está escondida
                 e a fonética entregaria a resposta. */}
@@ -200,7 +205,9 @@ export function Review({ deck, onDone }: { deck: Deck; onDone: () => void }) {
 
         {revealed && (
           <div className="mt-10 border-t border-line pt-6">
-            <p className="text-xl text-text/90">{card.translation}</p>
+            <p className="text-xl text-text/90">
+              <MarkedText text={card.translation} emphasis={card.translationEmphasisRanges} />
+            </p>
             {card.hints.length > 0 && (
               <ul className="mt-5 space-y-3">
                 {card.hints.map((h, i) => (

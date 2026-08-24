@@ -1,15 +1,12 @@
 import { useState } from 'react'
-import { type Hint, type HintType } from '../services/db'
+import { type Hint } from '../services/db'
 import { speech, normalRate } from '../services/audio'
 import { enrich, EnrichUnavailable } from '../services/enrich'
-import { ClozeEditor, type Range } from './ClozeEditor'
+import { HintsEditor } from './HintsEditor'
+import { MarkableField } from './MarkableField'
+import { type Marks, type Range } from './textMarks'
 
-const HINT_TYPES: { value: HintType; label: string }[] = [
-  { value: 'phrasal_verb', label: 'Phrasal verb' },
-  { value: 'false_cognate', label: 'Falso amigo' },
-  { value: 'pronunciation', label: 'Pronúncia' },
-  { value: 'custom', label: 'Nota' },
-]
+const NO_MARKS: Marks = { cloze: [], emphasis: [] }
 
 export interface CardFormValues {
   sentence: string
@@ -17,6 +14,8 @@ export interface CardFormValues {
   phonetic: string
   hints: Hint[]
   clozeRanges: Range[]
+  emphasisRanges: Range[]
+  translationEmphasisRanges: Range[]
 }
 
 /**
@@ -40,7 +39,14 @@ export function CardForm({
   const [translation, setTranslation] = useState(initial?.translation ?? '')
   const [phonetic, setPhonetic] = useState(initial?.phonetic ?? '')
   const [hints, setHints] = useState<Hint[]>(initial?.hints ?? [])
-  const [ranges, setRanges] = useState<Range[]>(initial?.clozeRanges ?? [])
+  const [marks, setMarks] = useState<Marks>({
+    cloze: initial?.clozeRanges ?? [],
+    emphasis: initial?.emphasisRanges ?? [],
+  })
+  const [translationMarks, setTranslationMarks] = useState<Marks>({
+    cloze: [],
+    emphasis: initial?.translationEmphasisRanges ?? [],
+  })
   const [status, setStatus] = useState<'idle' | 'loading' | 'manual'>('idle')
   const [notice, setNotice] = useState<string | null>(null)
 
@@ -52,7 +58,9 @@ export function CardForm({
     setNotice(null)
     try {
       const result = await enrich(sentence.trim())
+      // Tradução nova, offsets antigos: os destaques dela não valem mais.
       setTranslation(result.translation)
+      setTranslationMarks(NO_MARKS)
       if (result.phonetic) setPhonetic(result.phonetic)
       // Dicas escritas por você nunca são sobrescritas pela geração.
       setHints((prev) => [...prev.filter((h) => h.source === 'user'), ...result.hints])
@@ -65,14 +73,23 @@ export function CardForm({
 
   async function submit() {
     if (!ready) return
-    await onSubmit({ sentence, translation, phonetic, hints, clozeRanges: ranges })
+    await onSubmit({
+      sentence,
+      translation,
+      phonetic,
+      hints,
+      clozeRanges: marks.cloze,
+      emphasisRanges: marks.emphasis,
+      translationEmphasisRanges: translationMarks.emphasis,
+    })
     setNotice(null)
     if (!initial) {
       setSentence('')
       setTranslation('')
       setPhonetic('')
       setHints([])
-      setRanges([])
+      setMarks(NO_MARKS)
+      setTranslationMarks(NO_MARKS)
     }
   }
 
@@ -84,17 +101,17 @@ export function CardForm({
         <label className="mt-8 block font-mono text-xs uppercase tracking-wider text-muted">
           Frase em inglês
         </label>
-        <textarea
-          value={sentence}
-          onChange={(e) => {
-            setSentence(e.target.value)
-            setRanges([])
-          }}
-          onBlur={() => status === 'idle' && !translation && generate()}
-          rows={2}
-          placeholder="I'm looking forward to seeing you again."
-          className="mt-2 w-full resize-none rounded-xl border border-line bg-surface px-4 py-3 font-display text-xl outline-none placeholder:text-muted/40 focus:border-signal"
-        />
+        <div className="mt-2">
+          <MarkableField
+            value={sentence}
+            onChange={setSentence}
+            marks={marks}
+            onMarksChange={setMarks}
+            onBlur={() => status === 'idle' && !translation && generate()}
+            placeholder="I'm looking forward to seeing you again."
+            textClassName="font-display text-xl"
+          />
+        </div>
 
         {sentence.trim() && (
           <div className="mt-2 flex flex-wrap items-center gap-4">
@@ -116,27 +133,20 @@ export function CardForm({
 
         {notice && <p className="mt-3 text-sm text-muted">{notice}</p>}
 
-        {sentence.trim() && (
-          <div className="mt-8">
-            <label className="block font-mono text-xs uppercase tracking-wider text-muted">
-              Lacunas
-            </label>
-            <div className="mt-2 rounded-xl border border-line bg-surface px-4 py-3">
-              <ClozeEditor sentence={sentence} ranges={ranges} onChange={setRanges} />
-            </div>
-          </div>
-        )}
-
         <label className="mt-8 block font-mono text-xs uppercase tracking-wider text-muted">
           Tradução
         </label>
-        <textarea
-          value={translation}
-          onChange={(e) => setTranslation(e.target.value)}
-          rows={2}
-          placeholder={status === 'manual' ? 'Estou ansioso para ver você de novo.' : 'Gerada ao sair do campo acima — edite à vontade.'}
-          className="mt-2 w-full resize-none rounded-xl border border-line bg-surface px-4 py-3 text-lg outline-none placeholder:text-muted/40 focus:border-signal"
-        />
+        <div className="mt-2">
+          <MarkableField
+            value={translation}
+            onChange={setTranslation}
+            marks={translationMarks}
+            onMarksChange={setTranslationMarks}
+            allowCloze={false}
+            placeholder={status === 'manual' ? 'Estou ansioso para ver você de novo.' : 'Gerada ao sair do campo acima — edite à vontade.'}
+            textClassName="text-lg"
+          />
+        </div>
 
         <label className="mt-8 block font-mono text-xs uppercase tracking-wider text-muted">
           Fonética
@@ -148,60 +158,7 @@ export function CardForm({
           className="mt-2 w-full rounded-xl border border-line bg-surface px-4 py-3 font-mono text-lg text-signal outline-none placeholder:text-muted/40 focus:border-signal"
         />
 
-        <div className="mt-8 flex items-center justify-between">
-          <span className="font-mono text-xs uppercase tracking-wider text-muted">Dicas</span>
-          <button
-            onClick={() => setHints((h) => [...h, { type: 'custom', text: '', source: 'user' }])}
-            className="font-mono text-xs text-signal hover:brightness-110"
-          >
-            + adicionar
-          </button>
-        </div>
-
-        {hints.length === 0 ? (
-          <p className="mt-3 text-sm text-muted/70">
-            Nenhuma dica ainda. Elas chegam com a geração, e você ajusta ou escreve as suas.
-          </p>
-        ) : (
-          <ul className="mt-3 space-y-3">
-            {hints.map((h, i) => (
-              <li key={i} className="flex gap-2">
-                <select
-                  value={h.type}
-                  onChange={(e) =>
-                    setHints((hs) =>
-                      hs.map((x, j) => (j === i ? { ...x, type: e.target.value as HintType, source: 'user' } : x)),
-                    )
-                  }
-                  className="rounded-lg border border-line bg-surface px-2 py-2 font-mono text-xs text-muted outline-none focus:border-signal"
-                >
-                  {HINT_TYPES.map((t) => (
-                    <option key={t.value} value={t.value}>
-                      {t.label}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  value={h.text}
-                  onChange={(e) =>
-                    setHints((hs) =>
-                      hs.map((x, j) => (j === i ? { ...x, text: e.target.value, source: 'user' } : x)),
-                    )
-                  }
-                  placeholder="look forward to = aguardar ansiosamente"
-                  className="flex-1 rounded-lg border border-line bg-surface px-3 py-2 text-sm outline-none placeholder:text-muted/40 focus:border-signal"
-                />
-                <button
-                  onClick={() => setHints((hs) => hs.filter((_, j) => j !== i))}
-                  aria-label="Remover dica"
-                  className="px-2 text-muted hover:text-miss"
-                >
-                  ×
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
+        <HintsEditor hints={hints} onChange={setHints} />
       </main>
 
       <button

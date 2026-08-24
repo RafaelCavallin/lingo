@@ -71,7 +71,7 @@ src/
     optimizer.ts   Preparo do histórico e chamada do worker
   contexts/        DeckContext (baralho ativo) e AuthContext (sessão, sync)
   screens/         Home, Review, AddCard, Import, Cards, Progress, Settings, Account
-  components/      Waveform, ClozeEditor, VoiceCompare, Heatmap, DeckSwitcher
+  components/      Waveform, MarkableField, MarkedText, VoiceCompare, Heatmap, DeckSwitcher
   workers/         optimizer.worker.ts (fsrs-browser em wasm)
 api/
   enrich.ts               LLM → { translation, hints[] } em JSON

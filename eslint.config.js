@@ -6,7 +6,7 @@ import tseslint from 'typescript-eslint'
 
 export default tseslint.config(
   {
-    ignores: ['dist', 'dev-dist', '.vercel', 'supabase/.temp', 'supabase/pgdelta'],
+    ignores: ['dist', 'dev-dist', 'coverage', '.vercel', 'supabase/.temp', 'supabase/pgdelta'],
   },
   {
     // src/ está no tsconfig.json (`include: ["src"]`) — regras type-aware ligadas.
@@ -25,6 +25,8 @@ export default tseslint.config(
       'react-refresh': reactRefresh,
     },
     rules: {
+      // Comparação estrita sempre (ver .agents/rules/javascript-typescript.md).
+      eqeqeq: ['error', 'always'],
       // Só as regras clássicas de hooks — o resto do preset "recommended" do
       // pacote mira preparação para o React Compiler (purity/immutability/
       // gating), que não é o alvo aqui.
@@ -51,6 +53,9 @@ export default tseslint.config(
     languageOptions: {
       ecmaVersion: 2020,
       globals: globals.node,
+    },
+    rules: {
+      eqeqeq: ['error', 'always'],
     },
   },
 )
