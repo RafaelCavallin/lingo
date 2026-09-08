@@ -128,3 +128,64 @@ Cobre toda a lógica de negócio de `src/services/` — sincronização (LWW, pa
 
 **Não cobre UI/telas** (sem `@testing-library`/Playwright), e por isso `src/screens/`, `src/components/*.tsx` e `src/contexts/` ficam fora do escopo medido pela cobertura. A validação de componentes React continua manual (`npm run dev` ou `npx vercel dev`), junto do type-check via `npm run build`.
 
+## Skills
+
+As skills em [.agents/skills/](.agents/skills/) são fluxos de trabalho prontos. As do projeto formam uma esteira: `/criar-prd` → `/criar-techspec` → `/criar-tasks` → `/executar-task` (uma vez por tarefa) → `/executar-review` → `/executar-qa`. Todas gravam seus artefatos em `tasks/prd-<slug>/`.
+
+As demais são de terceiros e vêm do `skills-lock.json` (`agent-browser`, `supabase`, `vercel-cli`, `vercel-react-best-practices`, `vercel-composition-patterns`) ou foram instaladas à mão (`impeccable`, para trabalho de design de interface). **Não edite skills de terceiros** — a próxima atualização sobrescreve, e alterar o conteúdo invalida o hash do lockfile. Ajustes específicos deste projeto vão aqui no `AGENTS.md` ou nas rules.
+
+A `impeccable` **não é versionada** (`.gitignore`): são ~5 MB de bundles de navegador e um índice de fontes de 1 MB, e ela não está no `skills-lock.json`. Num clone limpo ela simplesmente não existe — instale-a à mão em `.agents/skills/impeccable/` e refaça o link com `ln -s ../../.agents/skills/impeccable .claude/skills/impeccable`.
+
+Cada skill em `.agents/skills/` precisa de um symlink correspondente em `.claude/skills/` para o Claude Code enxergá-la. Ao adicionar uma skill nova: `ln -s ../../.agents/skills/<nome> .claude/skills/<nome>`.
+
+Skills relevantes por tipo de mudança:
+
+| Mexendo em | Consulte |
+| --- | --- |
+| `src/` (React) | `vercel-react-best-practices`, `vercel-composition-patterns` |
+| Interface/design visual | `impeccable` |
+| `supabase/migrations/`, RLS, RPC, auth | `supabase` |
+| `api/`, deploy, variáveis de ambiente | `vercel-cli` |
+| Validar um fluxo no navegador | `agent-browser` |
+
+## Comandos de validação
+
+Estes são os únicos comandos de validação do projeto — nenhuma skill deve inventar outros:
+
+| Comando | O que faz | Quando é obrigatório |
+| --- | --- | --- |
+| `npm run lint` | ESLint | toda alteração em `src/` ou `api/` |
+| `npm test` | Vitest, uma vez e sai | durante o desenvolvimento |
+| `npm run test:coverage` | Vitest + piso de 80% | antes de fechar qualquer tarefa, review ou QA |
+| `npm run build` | `tsc -b` + build de produção | antes de fechar qualquer tarefa, review ou QA |
+
+Sobre cobertura: o piso de 80% mede só `src/services/**` e `src/components/textMarks.ts` (ver `coverage.thresholds` em `vite.config.ts`). **Não** exija cobertura de `src/screens/`, `src/components/*.tsx` ou `src/contexts/` — essa camada é validada no navegador, não pelo gate.
+
+Sobre E2E: **não há Playwright instalado nem pasta `e2e/`** hoje. Casos `E2E-*` de uma TechSpec são executados manualmente com a skill `agent-browser` contra o app rodando, com evidência em captura de tela — não tente rodar `npx playwright` nem criar `e2e/*.spec.ts` sem alinhar antes com o Rafael.
+
+## Como um agente sobe o app
+
+O app **não** se divide em "backend numa porta, frontend em outra": `npx vercel dev` serve o frontend e as funções `api/` juntos, no mesmo processo.
+
+| Precisa de | Suba | Porta |
+| --- | --- | --- |
+| Só UI e lógica de estudo | `npm run dev -- --port <porta>` | escolha uma livre em `5100–5199` |
+| `api/` também (tradução, voz, sync) | `npx vercel dev --listen <porta>` | escolha uma livre em `3000–3099` |
+| Contas e sincronização | `npx supabase start` | **portas fixas** `54321–54327` |
+
+Confira que a porta está livre antes de subir (`ss -ltn "sport = :<porta>"`) e registre no relatório qual porta e qual processo você iniciou.
+
+As portas do Supabase local **não são realocáveis**: vêm do `supabase/config.toml` e o `.env.local` aponta para elas. Se `npx supabase start` falhar com `port is already allocated`, é outro projeto Supabase ocupando-as — derrube-o com `npx supabase stop --project-id <id-do-outro>` (nunca com `--no-backup`) e avise o usuário de qual projeto você derrubou.
+
+Ao terminar — inclusive se a execução for interrompida ou bloqueada — encerre graciosamente só os processos que você iniciou e confirme que as portas foram liberadas. Nunca mate processos do usuário ou de outra sessão.
+
+## O que nenhum agente faz sozinho
+
+Ações fora do alcance de qualquer skill, sem pedido explícito do Rafael na conversa:
+
+- **Promover para produção.** Merge na `prod`, deploy de produção ou qualquer passo de [atualizar-producao.md](atualizar-producao.md).
+- **Rodar migration em produção**, ou `npx supabase db push --linked` (o link deste repositório aponta para produção). Use sempre `--db-url` explícito.
+- **`npx vercel env pull` sem argumento** — sobrescreve o `.env.local` e fura o isolamento. Se precisar, puxe para `.env.vercel-prod.bak`.
+- **Escrever variáveis de ambiente no escopo Production.** Prepare o comando e entregue para o Rafael executar.
+- **Editar migration já aplicada.** Toda mudança de schema entra como migration nova.
+

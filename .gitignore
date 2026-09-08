@@ -6,8 +6,8 @@ dev-dist
 .vercel
 tsconfig.tsbuildinfo
 .claude/settings.local.json
-.claude
-.agents
+.agents/skills/impeccable
+.claude/skills/impeccable
 
 openai-api-uso.md
 ARQUITETURA.md
