@@ -17,12 +17,8 @@ function sentBody(fetchMock: Mock, call: number): string {
   return typeof body === 'string' ? body : ''
 }
 
-function mp3(content = 'mp3') {
-  return new Blob([content], { type: 'audio/mpeg' })
-}
-
-function audioResponse(blob = mp3()) {
-  return new Response(blob, { status: 200, headers: { 'Content-Type': 'audio/mpeg' } })
+function audioResponse(content = 'mp3') {
+  return new Response(content, { status: 200, headers: { 'Content-Type': 'audio/mpeg' } })
 }
 
 class FakeUtterance {
