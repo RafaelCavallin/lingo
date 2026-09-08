@@ -10,15 +10,23 @@ import { EditCard } from './EditCard'
 /** Fundo suficiente para cobrir a resposta mais rápida sem baixar a fila toda. */
 const PREFETCH_AHEAD = 2
 
+type AudioStatus = 'idle' | 'loading' | 'playing'
+
 export function Review({ deck, onDone }: { deck: Deck; onDone: () => void }) {
   const [queue, setQueue] = useState<Card[] | null>(null)
   const [index, setIndex] = useState(0)
   const [revealed, setRevealed] = useState(false)
-  const [playing, setPlaying] = useState(false)
+  const [audioStatus, setAudioStatus] = useState<AudioStatus>('idle')
   const [audioError, setAudioError] = useState<string | null>(null)
   const [done, setDone] = useState(0)
   const [editing, setEditing] = useState(false)
   const shownAt = useRef(Date.now())
+  // Descarta o resultado de um play() que não é mais o mais recente — o
+  // StrictMode do React roda o efeito de troca de cartão duas vezes em dev
+  // (monta, desmonta, monta de novo), e sem isso o cancelamento da primeira
+  // chamada pintava "Não foi possível reproduzir o áudio." por cima da
+  // segunda, que tocava normalmente.
+  const playToken = useRef(0)
 
   const card = queue?.[index]
 
@@ -29,14 +37,19 @@ export function Review({ deck, onDone }: { deck: Deck; onDone: () => void }) {
   const play = useCallback(
     async (rate: number) => {
       if (!card) return
+      const token = ++playToken.current
       setAudioError(null)
-      setPlaying(true)
+      setAudioStatus('loading')
       try {
-        await speech.speak(card.id, card.sentence, rate)
+        await speech.speak(card.id, card.sentence, rate, () => {
+          if (token === playToken.current) setAudioStatus('playing')
+        })
       } catch (e) {
-        setAudioError(e instanceof Error ? e.message : 'Não foi possível reproduzir o áudio.')
+        if (token === playToken.current) {
+          setAudioError(e instanceof Error ? e.message : 'Não foi possível reproduzir o áudio.')
+        }
       } finally {
-        setPlaying(false)
+        if (token === playToken.current) setAudioStatus('idle')
       }
     },
     [card],
@@ -151,7 +164,11 @@ export function Review({ deck, onDone }: { deck: Deck; onDone: () => void }) {
       </div>
 
       <main className="flex flex-1 flex-col justify-center py-10">
-        <Waveform text={card.sentence} playing={playing} />
+        <Waveform
+          text={card.sentence}
+          playing={audioStatus === 'playing'}
+          loading={audioStatus === 'loading'}
+        />
 
         {deck.listenFirst && !revealed ? (
           <p className="mt-8 font-display text-2xl leading-snug text-muted/60">

@@ -30,8 +30,9 @@ class FakeUtterance {
   voice: { name: string; lang: string } | null = null
   lang = ''
   rate = 1
+  onstart: (() => void) | null = null
   onend: (() => void) | null = null
-  onerror: (() => void) | null = null
+  onerror: ((e: { error: string }) => void) | null = null
 
   constructor(public text: string) {
     FakeUtterance.last = this
@@ -86,7 +87,12 @@ let restoreObjectUrl = () => {}
 const speechSynthesisMock = {
   cancel: vi.fn(),
   getVoices: vi.fn(() => [] as { name: string; lang: string }[]),
-  speak: vi.fn((u: FakeUtterance) => setTimeout(() => u.onend?.(), 0)),
+  speak: vi.fn((u: FakeUtterance) =>
+    setTimeout(() => {
+      u.onstart?.()
+      u.onend?.()
+    }, 0),
+  ),
 }
 
 beforeEach(() => {
@@ -154,13 +160,40 @@ describe('webSpeech', () => {
     expect(FakeUtterance.last?.voice?.name).toBe('Daniel')
   })
 
-  it('rejeita quando a síntese falha', async () => {
+  it('rejeita quando a síntese falha por um motivo real', async () => {
     speechSynthesisMock.speak.mockImplementationOnce((u: FakeUtterance) =>
-      setTimeout(() => u.onerror?.(), 0),
+      setTimeout(() => u.onerror?.({ error: 'synthesis-failed' }), 0),
     )
     const { webSpeech } = await loadAudio()
 
     await expect(webSpeech.speak('c1', 'hi', 1)).rejects.toThrow('Não foi possível reproduzir o áudio.')
+  })
+
+  it.each(['interrupted', 'canceled'])(
+    'resolve sem erro quando a fala é cancelada por um cancel() benigno (%s)',
+    async (reason) => {
+      speechSynthesisMock.speak.mockImplementationOnce((u: FakeUtterance) =>
+        setTimeout(() => u.onerror?.({ error: reason }), 0),
+      )
+      const { webSpeech } = await loadAudio()
+
+      await expect(webSpeech.speak('c1', 'hi', 1)).resolves.toBeUndefined()
+    },
+  )
+
+  it('avisa onStart quando a fala de fato começa', async () => {
+    speechSynthesisMock.speak.mockImplementationOnce((u: FakeUtterance) =>
+      setTimeout(() => {
+        u.onstart?.()
+        u.onend?.()
+      }, 0),
+    )
+    const { webSpeech } = await loadAudio()
+    const onStart = vi.fn()
+
+    await webSpeech.speak('c1', 'hi', 1, onStart)
+
+    expect(onStart).toHaveBeenCalledTimes(1)
   })
 
   it('cancela a fala em andamento no stop', async () => {
@@ -187,6 +220,27 @@ describe('cloudTts', () => {
     const cached = await db.audioBlobs.where({ cardId: 'c1', kind: 'tts' }).toArray()
     expect(cached).toHaveLength(1)
     expect(cached[0].voice).toBe('nova')
+  })
+
+  it('avisa onStart só depois que o play() é aceito, não durante a busca', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(() => audioResponse()))
+    const { cloudTts } = await loadAudio()
+    const onStart = vi.fn()
+
+    await cloudTts.speak('c1', 'x', 1, onStart)
+
+    expect(onStart).toHaveBeenCalledTimes(1)
+  })
+
+  it('não avisa onStart quando o play() é cancelado por uma reprodução mais nova', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(() => audioResponse()))
+    FakeAudioElement.failNextPlayWith = new DOMException('interrompido', 'AbortError')
+    const { cloudTts } = await loadAudio()
+    const onStart = vi.fn()
+
+    await cloudTts.speak('c1', 'x', 1, onStart)
+
+    expect(onStart).not.toHaveBeenCalled()
   })
 
   it('não busca de novo o que já está no cache', async () => {
@@ -269,6 +323,33 @@ describe('cloudTts', () => {
     expect((erroHttp as InstanceType<typeof http.TtsUnavailable>).permanent).toBe(false)
   })
 
+  it('não deixa a busca lenta de um cartão anterior sobrepor o cartão já tocando', async () => {
+    let resolveStale: (() => void) | undefined
+    const fetchMock = vi.fn().mockImplementation((_url: string, init: RequestInit) => {
+      const body = JSON.parse(init.body as string) as { text: string }
+      if (body.text === 'antiga') {
+        return new Promise<Response>((resolve) => {
+          resolveStale = () => resolve(audioResponse())
+        })
+      }
+      return Promise.resolve(audioResponse())
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const { cloudTts } = await loadAudio()
+
+    const stale = cloudTts.speak('old', 'antiga', 1)
+    await cloudTts.speak('new', 'nova', 0.5)
+
+    expect(FakeAudioElement.plays).toBe(1)
+    expect(FakeAudioElement.playbackRates).toEqual([0.5])
+
+    resolveStale?.()
+    await stale
+
+    expect(FakeAudioElement.plays).toBe(1)
+    expect(FakeAudioElement.playbackRates).toEqual([0.5])
+  })
+
   it('resolve quando o áudio é interrompido por uma reprodução mais nova', async () => {
     vi.stubGlobal('fetch', vi.fn().mockImplementation(() => audioResponse()))
     FakeAudioElement.endWith = 'pause'
@@ -331,6 +412,16 @@ describe('speech', () => {
     expect(speechSynthesisMock.speak).toHaveBeenCalled()
     expect(speech.id).toBe('webspeech')
     expect(usingNeuralVoice()).toBe(false)
+  })
+
+  it('repassa onStart ao provider que de fato tocar, mesmo caindo para a voz do navegador', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(() => new Response('', { status: 501 })))
+    const { speech } = await loadAudio()
+    const onStart = vi.fn()
+
+    await speech.speak('c1', 'I gave up', 1, onStart)
+
+    expect(onStart).toHaveBeenCalledTimes(1)
   })
 
   it('pausa a nuvem por um minuto depois de duas falhas seguidas', async () => {

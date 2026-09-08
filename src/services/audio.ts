@@ -10,7 +10,8 @@ import { db, uid, DEFAULT_VOICE, DEFAULT_RATE } from './db'
  */
 export interface SpeechProvider {
   readonly id: 'webspeech' | 'cloud'
-  speak(cardId: string, text: string, rate: number): Promise<void>
+  /** `onStart` avisa quando o som de fato começa a sair — não quando a busca/preparo termina. */
+  speak(cardId: string, text: string, rate: number, onStart?: () => void): Promise<void>
   stop(): void
   warm(cardId: string, text: string): Promise<void>
 }
@@ -26,13 +27,20 @@ function pickAmericanVoice(): SpeechSynthesisVoice | undefined {
   )
 }
 
+/**
+ * `cancel()` (nosso próprio, no início deste speak, ou de um `stop()` externo)
+ * dispara "interrupted"/"canceled" no onerror da fala anterior — não é uma
+ * falha real de reprodução, e não deve virar mensagem de erro na tela.
+ */
+const BENIGN_SPEECH_ERRORS = new Set(['interrupted', 'canceled'])
+
 export const webSpeech: SpeechProvider = {
   id: 'webspeech',
   async warm() {},
   stop() {
     speechSynthesis.cancel()
   },
-  speak(_cardId, text, rate) {
+  speak(_cardId, text, rate, onStart) {
     return new Promise((resolve, reject) => {
       speechSynthesis.cancel()
       const u = new SpeechSynthesisUtterance(text)
@@ -40,8 +48,12 @@ export const webSpeech: SpeechProvider = {
       if (voice) u.voice = voice
       u.lang = 'en-US'
       u.rate = rate
+      u.onstart = () => onStart?.()
       u.onend = () => resolve()
-      u.onerror = () => reject(new Error('Não foi possível reproduzir o áudio.'))
+      u.onerror = (e) => {
+        if (BENIGN_SPEECH_ERRORS.has(e.error)) resolve()
+        else reject(new Error('Não foi possível reproduzir o áudio.'))
+      }
       speechSynthesis.speak(u)
     })
   },
@@ -82,9 +94,13 @@ export const cloudTts: SpeechProvider = {
   stop() {
     audioEl().pause()
   },
-  async speak(cardId, text, rate) {
-    const blob = await getOrFetch(cardId, text)
+  async speak(cardId, text, rate, onStart) {
+    // Tomado antes do fetch: sem isso, uma busca lenta de um cartão anterior
+    // podia resolver depois que o cartão seguinte (já em cache) começou a
+    // tocar, e sobrescrever o <audio> compartilhado com o som errado.
     const token = ++playToken
+    const blob = await getOrFetch(cardId, text)
+    if (token !== playToken) return
     const a = audioEl()
     if (a.src.startsWith('blob:')) URL.revokeObjectURL(a.src)
     a.src = URL.createObjectURL(blob)
@@ -99,6 +115,7 @@ export const cloudTts: SpeechProvider = {
       if (e instanceof DOMException && e.name === 'AbortError') return
       throw e
     }
+    if (token === playToken) onStart?.()
 
     // Sem isso a promise resolvia assim que o play começava, não quando o
     // áudio terminava — a onda parava de animar bem antes do fim da frase.
@@ -232,17 +249,17 @@ export const speech: SpeechProvider = {
       noteFailure(e)
     }
   },
-  async speak(cardId, text, rate) {
+  async speak(cardId, text, rate, onStart) {
     if (cloudUsable()) {
       try {
-        await cloudTts.speak(cardId, text, rate)
+        await cloudTts.speak(cardId, text, rate, onStart)
         consecutiveFailures = 0
         return
       } catch (e) {
         if (!noteFailure(e)) throw e
       }
     }
-    await webSpeech.speak(cardId, text, rate)
+    await webSpeech.speak(cardId, text, rate, onStart)
   },
 }
 
