@@ -1,6 +1,6 @@
 import { Suspense, lazy, useEffect, useState } from 'react'
 import { DeckProvider, useDeck } from './contexts/DeckContext'
-import { AuthProvider } from './contexts/AuthContext'
+import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { NavigationProvider, type Screen } from './contexts/NavigationContext'
 import { AccountTransition } from './components/AccountTransition'
 import { syncNow } from './services/sync'
@@ -12,6 +12,7 @@ import { Import } from './screens/Import'
 import { Settings } from './screens/Settings'
 import { Cards } from './screens/Cards'
 import { Account } from './screens/Account'
+import { NoDeck } from './screens/NoDeck'
 // Recharts só é baixado por quem abre o progresso — o caminho de estudo fica leve.
 const Progress = lazy(() => import('./screens/Progress').then((m) => ({ default: m.Progress })))
 
@@ -28,8 +29,8 @@ export default function App() {
 
 function AppShell() {
   const { deck, createDeck } = useDeck()
+  const { signInSettledAt } = useAuth()
   const [screen, setScreen] = useState<Screen>('home')
-  const [newDeckName, setNewDeckName] = useState('')
 
   useEffect(() => {
     // Pede persistência do IndexedDB: reduz o risco de o navegador limpar os dados.
@@ -51,6 +52,18 @@ function AppShell() {
     void syncNow('session-end')
   }
 
+  // `signInSettledAt` só muda quando o AuthContext decidiu que este login
+  // (iniciado pelo usuário, e já sem decisão pendente de dados) deve
+  // devolver o usuário à Home (RF6-RF10). O valor inicial 0 nunca dispara
+  // este efeito, porque a dependência não muda entre montagem e primeiro
+  // render. Reimplementa o corpo de `goHome` em vez de depender dela: sua
+  // referência muda a cada render e entraria em loop se fosse dependência.
+  useEffect(() => {
+    if (signInSettledAt === 0) return
+    setScreen('home')
+    void syncNow('session-end')
+  }, [signInSettledAt])
+
   // Voltar para a Home continua sendo o fim de sessão (e o gatilho do sync);
   // pular direto de Cartões para Ajustes pelo menu, não.
   const navigate = (next: Screen) => (next === 'home' ? goHome() : setScreen(next))
@@ -58,28 +71,7 @@ function AppShell() {
   // Só acontece se o usuário excluiu todos os seus baralhos — não é um
   // estado de carregamento. ensureDefaultDeck() nunca recria um sozinho aqui.
   if (!deck) {
-    return (
-      <div className="mx-auto flex min-h-dvh max-w-md flex-col items-start justify-center px-5">
-        <h1 className="font-display text-3xl">Nenhum baralho</h1>
-        <p className="mt-3 text-muted">Crie um baralho para começar a estudar.</p>
-        <div className="mt-6 flex w-full gap-2">
-          <input
-            autoFocus
-            value={newDeckName}
-            onChange={(e) => setNewDeckName(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && newDeckName.trim() && createDeck(newDeckName)}
-            placeholder="Nome do baralho"
-            className="min-w-0 flex-1 rounded-xl border border-line bg-surface px-4 py-3 text-sm outline-none focus:border-signal"
-          />
-          <button
-            onClick={() => newDeckName.trim() && createDeck(newDeckName)}
-            className="shrink-0 rounded-xl bg-signal px-5 py-3 font-medium text-ink transition hover:brightness-110"
-          >
-            Criar
-          </button>
-        </div>
-      </div>
-    )
+    return <NoDeck createDeck={createDeck} onDeckCreated={goHome} />
   }
 
   const renderScreen = () => {

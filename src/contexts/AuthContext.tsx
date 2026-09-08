@@ -3,6 +3,7 @@ import type { Session } from '@supabase/supabase-js'
 import { getSupabase, isSyncConfigured } from '../services/supabase'
 import { completeSignIn, decideOnSignIn, getBoundUserId, type SignInDecision, type SignInPlan } from '../services/auth'
 import { syncNow } from '../services/sync'
+import { useSignInSettlement } from './useSignInSettlement'
 
 interface AuthContextValue {
   /** Se o servidor não tem Supabase configurado, a UI de conta nem aparece. */
@@ -10,6 +11,8 @@ interface AuthContextValue {
   session: Session | null
   /** `null` quando não há decisão pendente de mesclar/descartar dados locais. */
   pendingDecision: SignInDecision | null
+  /** Muda a cada login concluído que deve devolver o usuário à Home (ver navigationPolicy). */
+  signInSettledAt: number
   signUp: (
     name: string,
     email: string,
@@ -27,24 +30,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [pendingDecision, setPendingDecision] = useState<SignInDecision | null>(null)
   const pendingUserId = useRef<string | null>(null)
   const listening = useRef(false)
+  const { signInSettledAt, userInitiated, settleSignIn } = useSignInSettlement()
 
-  const handleSignedIn = useCallback(async (userId: string) => {
-    const decision = await decideOnSignIn(userId)
-    if (decision.kind === 'resume') {
-      void syncNow('signin')
-      return
-    }
-    if (decision.kind === 'auto-adopt') {
-      await completeSignIn(userId, 'merge')
-      void syncNow('signin')
-      return
-    }
-    // needs-prompt / account-switch: só sincroniza depois que o usuário
-    // escolher mesclar ou descartar em resolvePending — sincronizar antes
-    // empurraria dados que a decisão ainda pode mandar apagar.
-    pendingUserId.current = userId
-    setPendingDecision(decision)
-  }, [])
+  const handleSignedIn = useCallback(
+    async (userId: string) => {
+      const decision = await decideOnSignIn(userId)
+      if (decision.kind === 'resume') {
+        void syncNow('signin')
+        settleSignIn(null)
+        return
+      }
+      if (decision.kind === 'auto-adopt') {
+        await completeSignIn(userId, 'merge')
+        void syncNow('signin')
+        settleSignIn(null)
+        return
+      }
+      // needs-prompt / account-switch: só sincroniza (e só decide o redirect)
+      // depois que o usuário escolher mesclar ou descartar em resolvePending —
+      // sincronizar antes empurraria dados que a decisão ainda pode apagar.
+      pendingUserId.current = userId
+      setPendingDecision(decision)
+    },
+    [settleSignIn],
+  )
 
   /**
    * Idempotente e compartilhada entre o restauro de sessão no boot e as ações
@@ -82,42 +91,54 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signUp = useCallback(
     async (name: string, email: string, password: string) => {
+      userInitiated.current = true
       const supabase = await ensureListening()
       const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { name } } })
-      if (error) return { error: error.message, needsConfirmation: false }
+      if (error) {
+        userInitiated.current = false
+        return { error: error.message, needsConfirmation: false }
+      }
       // Com "Confirm email" ligado no projeto, o cadastro não vem com sessão —
       // sem isto a tela voltaria ao formulário em silêncio, como se nada
-      // tivesse acontecido.
+      // tivesse acontecido. Sem sessão, não há SIGNED_IN agora — deixa
+      // `userInitiated` ligado até a confirmação trazer um SIGNED_IN de verdade.
       return { error: null, needsConfirmation: !data.session }
     },
-    [ensureListening],
+    [ensureListening, userInitiated],
   )
 
   const signIn = useCallback(
     async (email: string, password: string) => {
+      userInitiated.current = true
       const supabase = await ensureListening()
       const { error } = await supabase.auth.signInWithPassword({ email, password })
+      if (error) userInitiated.current = false
       return { error: error?.message ?? null }
     },
-    [ensureListening],
+    [ensureListening, userInitiated],
   )
 
   // Nunca apaga dados locais: o app funciona sem conta, e sair não deveria
   // custar o que foi estudado enquanto ela existia.
   const signOut = useCallback(async () => {
+    userInitiated.current = false
     if (!listening.current) return
     const supabase = await getSupabase()
     await supabase.auth.signOut()
-  }, [])
+  }, [userInitiated])
 
-  const resolvePending = useCallback(async (plan: SignInPlan) => {
-    const userId = pendingUserId.current
-    setPendingDecision(null)
-    pendingUserId.current = null
-    if (!userId) return
-    await completeSignIn(userId, plan)
-    if (plan !== 'cancel') void syncNow('signin')
-  }, [])
+  const resolvePending = useCallback(
+    async (plan: SignInPlan) => {
+      const userId = pendingUserId.current
+      setPendingDecision(null)
+      pendingUserId.current = null
+      if (!userId) return
+      await completeSignIn(userId, plan)
+      if (plan !== 'cancel') void syncNow('signin')
+      settleSignIn(plan)
+    },
+    [settleSignIn],
+  )
 
   return (
     <AuthContext.Provider
@@ -125,6 +146,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         configured: isSyncConfigured(),
         session,
         pendingDecision,
+        signInSettledAt,
         signUp,
         signIn,
         signOut,
