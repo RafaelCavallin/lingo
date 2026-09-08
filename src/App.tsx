@@ -4,6 +4,7 @@ import { AuthProvider } from './contexts/AuthContext'
 import { NavigationProvider, type Screen } from './contexts/NavigationContext'
 import { AccountTransition } from './components/AccountTransition'
 import { syncNow } from './services/sync'
+import { primeAudio } from './services/audioPrime'
 import { Home } from './screens/Home'
 import { Review } from './screens/Review'
 import { AddCard } from './screens/AddCard'
@@ -33,6 +34,7 @@ function AppShell() {
   useEffect(() => {
     // Pede persistência do IndexedDB: reduz o risco de o navegador limpar os dados.
     void navigator.storage?.persist?.()
+    primeAudio()
   }, [])
 
   useEffect(() => {
