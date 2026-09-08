@@ -155,7 +155,10 @@ describe('computeStats', () => {
     expect(stats.youngCount).toBe(2)
   })
 
-  it('conta a sequência de dias seguidos até a primeira lacuna', async () => {
+  it('conta a sequência de dias seguidos até a primeira lacuna com cartão vencido', async () => {
+    await db.cards.add(
+      makeCard({ id: 'atrasado', createdAt: NOW.getTime() - 10 * DAY, due: NOW.getTime() - 10 * DAY }),
+    )
     await db.reviewLogs.bulkAdd([
       makeLog({ id: 'l1', reviewedAt: NOW.getTime() }),
       makeLog({ id: 'l2', reviewedAt: NOW.getTime() - DAY }),
@@ -179,12 +182,31 @@ describe('computeStats', () => {
     expect(stats.streak).toBe(2)
   })
 
-  it('devolve sequência zero quando ontem e hoje estão vazios', async () => {
+  it('devolve sequência zero quando havia cartão vencido e ontem e hoje ficaram sem revisão', async () => {
+    await db.cards.add(
+      makeCard({ id: 'atrasado', createdAt: NOW.getTime() - 10 * DAY, due: NOW.getTime() - 10 * DAY }),
+    )
     await db.reviewLogs.add(makeLog({ reviewedAt: NOW.getTime() - 3 * DAY }))
 
     const stats = await computeStats(makeDeck())
 
     expect(stats.streak).toBe(0)
+  })
+
+  it('não quebra a sequência num dia sem nenhum cartão vencido para revisar', async () => {
+    // O único cartão fica vencido no dia -4, é revisado nesse dia e só volta a
+    // vencer no dia -1 — nos dias -3 e -2 não havia nada para revisar.
+    await db.cards.add(
+      makeCard({ id: 'unico', createdAt: NOW.getTime() - 4 * DAY, due: NOW.getTime() - 4 * DAY }),
+    )
+    await db.reviewLogs.bulkAdd([
+      makeLog({ id: 'l1', cardId: 'unico', reviewedAt: NOW.getTime() - 4 * DAY, scheduledDays: 3 }),
+      makeLog({ id: 'l2', cardId: 'unico', reviewedAt: NOW.getTime() - DAY, scheduledDays: 10 }),
+    ])
+
+    const stats = await computeStats(makeDeck())
+
+    expect(stats.streak).toBe(2)
   })
 })
 

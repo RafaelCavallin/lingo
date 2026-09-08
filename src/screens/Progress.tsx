@@ -91,6 +91,7 @@ export function Progress({ deck, onBack }: { deck: Deck; onBack: () => void }) {
                       color: '#EDEBFF',
                     }}
                     labelStyle={{ color: '#9C9BC4' }}
+                    itemStyle={{ color: '#EDEBFF' }}
                     formatter={(v) => [String(v), 'frases'] as [string, string]}
                   />
                   <Bar dataKey="count" radius={[3, 3, 0, 0]}>

@@ -1,5 +1,5 @@
 import { State } from 'ts-fsrs'
-import { db, liveCards, type Deck } from './db'
+import { db, liveCards, type Card, type Deck, type ReviewLog } from './db'
 import { iso } from '../components/Heatmap'
 
 export interface Stats {
@@ -16,9 +16,10 @@ export interface Stats {
 const DAY = 86_400_000
 
 export async function computeStats(deck: Deck): Promise<Stats> {
-  const [logs, cards] = await Promise.all([
+  const [logs, cards, allCards] = await Promise.all([
     db.reviewLogs.toArray(),
     liveCards(deck.id).toArray(),
+    db.cards.toArray(),
   ])
 
   const byDay = new Map<string, number>()
@@ -61,7 +62,7 @@ export async function computeStats(deck: Deck): Promise<Stats> {
     retention30,
     reviews30: recent.length,
     reviewsTotal: logs.length,
-    streak: currentStreak(byDay),
+    streak: currentStreak(byDay, allCards, logs),
     byDay,
     forecast,
     maturity,
@@ -69,14 +70,54 @@ export async function computeStats(deck: Deck): Promise<Stats> {
   }
 }
 
-/** Dias seguidos de estudo. O dia de hoje ainda em branco não quebra a sequência. */
-function currentStreak(byDay: Map<string, number>): number {
+/**
+ * Dias seguidos de estudo. O dia de hoje ainda em branco não quebra a sequência,
+ * e um dia sem nenhum cartão vencido também não — só quebra quando havia cartão
+ * esperando revisão e nenhuma revisão aconteceu naquele dia (em qualquer baralho).
+ */
+function currentStreak(byDay: Map<string, number>, cards: Card[], logs: ReviewLog[]): number {
+  const logsByCard = new Map<string, ReviewLog[]>()
+  for (const l of logs) {
+    const arr = logsByCard.get(l.cardId)
+    if (arr) arr.push(l)
+    else logsByCard.set(l.cardId, [l])
+  }
+  for (const arr of logsByCard.values()) arr.sort((a, b) => a.reviewedAt - b.reviewedAt)
+
+  const earliestRaw = Math.min(
+    ...cards.map((c) => c.createdAt),
+    ...logs.map((l) => l.reviewedAt),
+  )
+  if (!Number.isFinite(earliestRaw)) return 0
+  const earliestDay = new Date(earliestRaw)
+  earliestDay.setHours(0, 0, 0, 0)
+  const earliest = earliestDay.getTime()
+
+  // Cartão vencido nesse dia = devido antes do fim do dia, considerando só
+  // revisões anteriores ao início do dia (o dia em questão não teve nenhuma).
+  function hadCardDue(dayStart: number): boolean {
+    const dayEnd = dayStart + DAY
+    return cards.some((c) => {
+      let due = c.createdAt
+      for (const l of logsByCard.get(c.id) ?? []) {
+        if (l.reviewedAt >= dayStart) break
+        due = l.reviewedAt + l.scheduledDays * DAY
+      }
+      return due < dayEnd
+    })
+  }
+
   let streak = 0
   const cursor = new Date()
   cursor.setHours(0, 0, 0, 0)
   if (!byDay.get(iso(cursor))) cursor.setDate(cursor.getDate() - 1)
-  while (byDay.get(iso(cursor))) {
-    streak++
+
+  while (cursor.getTime() >= earliest) {
+    if (byDay.get(iso(cursor))) {
+      streak++
+    } else if (hadCardDue(cursor.getTime())) {
+      break
+    }
     cursor.setDate(cursor.getDate() - 1)
   }
   return streak
