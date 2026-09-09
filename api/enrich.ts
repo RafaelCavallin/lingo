@@ -9,17 +9,9 @@
  * ver api/_lib/enrichProviders.ts. Trocar de provedor é só trocar essa variável
  * e preencher a chave correspondente no .env.
  */
-import { PROVIDERS, UpstreamError } from './_lib/enrichProviders'
+import { json, respondWithPrompt } from './_lib/enrichHandler'
 
 export const config = { runtime: 'edge' }
-
-// `||` e não `??`: a variável vem como string vazia quando o .env a declara
-// sem valor, e "" precisa cair no padrão igual a undefined.
-const PROVIDER_NAME = process.env.ENRICH_PROVIDER?.trim() || 'anthropic'
-const PROVIDER = PROVIDERS[PROVIDER_NAME]
-
-// Modelo do provedor ativo; troque por claude-sonnet-5 / gemini-2.5-flash etc. se quiser dicas mais elaboradas.
-const MODEL = process.env.ENRICH_MODEL?.trim() || PROVIDER?.defaultModel
 
 const SYSTEM = `Você ajuda um brasileiro a estudar inglês por frases inteiras.
 
@@ -46,13 +38,6 @@ Responda SOMENTE com JSON válido, sem markdown, sem crases, sem texto antes ou 
 export default async function handler(req: Request): Promise<Response> {
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
 
-  if (!PROVIDER) {
-    return json({ error: `ENRICH_PROVIDER inválido: "${PROVIDER_NAME}".` }, 501)
-  }
-
-  const key = process.env[PROVIDER.envKey]
-  if (!key) return json({ error: `Chave da API não configurada no servidor: falta ${PROVIDER.envKey}.` }, 501)
-
   let sentence: string | undefined
   try {
     ;({ sentence } = (await req.json()) as { sentence?: string })
@@ -62,27 +47,5 @@ export default async function handler(req: Request): Promise<Response> {
   if (!sentence?.trim()) return json({ error: 'Frase vazia.' }, 400)
   if (sentence.length > 500) return json({ error: 'Frase longa demais.' }, 400)
 
-  try {
-    const raw = await PROVIDER.call({ apiKey: key, model: MODEL!, system: SYSTEM, sentence: sentence.trim() })
-
-    // O modelo é instruído a não usar crases, mas a limpeza custa pouco.
-    const clean = raw.replace(/^```(?:json)?/i, '').replace(/```$/, '').trim()
-
-    return new Response(clean, {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    })
-  } catch (e) {
-    if (e instanceof UpstreamError) {
-      return json({ error: `A API respondeu ${e.status}.`, upstream: e.status }, 502)
-    }
-    return json({ error: 'Não foi possível falar com o serviço de tradução.' }, 502)
-  }
-}
-
-function json(body: unknown, status: number) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'Content-Type': 'application/json' },
-  })
+  return respondWithPrompt(SYSTEM, sentence.trim())
 }

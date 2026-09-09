@@ -21,6 +21,8 @@ export function MarkableField({
   placeholder,
   onBlur,
   textClassName,
+  onTranscribe,
+  transcribing = false,
 }: {
   value: string
   onChange: (text: string) => void
@@ -30,6 +32,8 @@ export function MarkableField({
   placeholder?: string
   onBlur?: () => void
   textClassName: string
+  onTranscribe?: (text: string) => void
+  transcribing?: boolean
 }) {
   const ref = useRef<HTMLTextAreaElement>(null)
   const [selection, setSelection] = useState<Range | null>(null)
@@ -96,6 +100,10 @@ export function MarkableField({
         markedKind={marked?.kind ?? null}
         onAdd={add}
         onRemove={remove}
+        onTranscribe={
+          pending && onTranscribe ? () => onTranscribe(value.slice(pending.start, pending.end)) : undefined
+        }
+        transcribing={transcribing}
       />
     </div>
   )

@@ -15,6 +15,8 @@ export function MarkActions({
   markedKind,
   onAdd,
   onRemove,
+  onTranscribe,
+  transcribing = false,
 }: {
   marks: Marks
   allowCloze: boolean
@@ -22,6 +24,8 @@ export function MarkActions({
   markedKind: MarkKind | null
   onAdd: (kind: MarkKind) => void
   onRemove: () => void
+  onTranscribe?: () => void
+  transcribing?: boolean
 }) {
   const keepSelection = (e: { preventDefault: () => void }) => e.preventDefault()
 
@@ -45,6 +49,16 @@ export function MarkActions({
         <button onMouseDown={keepSelection} onClick={() => onAdd('emphasis')} className={PILL}>
           Destacar seleção
         </button>
+        {onTranscribe && (
+          <button
+            onMouseDown={keepSelection}
+            onClick={onTranscribe}
+            disabled={transcribing}
+            className={`${PILL} disabled:pointer-events-none disabled:opacity-60`}
+          >
+            {transcribing ? 'Buscando pronúncia…' : 'Adicionar transcrição fonética'}
+          </button>
+        )}
       </div>
     )
 

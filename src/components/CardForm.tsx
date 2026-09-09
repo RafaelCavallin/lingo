@@ -5,6 +5,7 @@ import { enrich, EnrichUnavailable } from '../services/enrich'
 import { HintsEditor } from './HintsEditor'
 import { MarkableField } from './MarkableField'
 import { type Marks, type Range } from './textMarks'
+import { usePhoneticLookup } from './usePhoneticLookup'
 
 const NO_MARKS: Marks = { cloze: [], emphasis: [] }
 
@@ -49,8 +50,10 @@ export function CardForm({
   })
   const [status, setStatus] = useState<'idle' | 'loading' | 'manual'>('idle')
   const [notice, setNotice] = useState<string | null>(null)
+  const phoneticLookup = usePhoneticLookup(setPhonetic)
 
-  const ready = sentence.trim().length > 0 && translation.trim().length > 0
+  const ready =
+    sentence.trim().length > 0 && translation.trim().length > 0 && phoneticLookup.status !== 'loading'
 
   async function generate() {
     if (!sentence.trim()) return
@@ -110,6 +113,8 @@ export function CardForm({
             onBlur={() => status === 'idle' && !translation && generate()}
             placeholder="I'm looking forward to seeing you again."
             textClassName="font-display text-xl"
+            onTranscribe={(text) => void phoneticLookup.lookup(text, sentence)}
+            transcribing={phoneticLookup.status === 'loading'}
           />
         </div>
 
@@ -132,6 +137,7 @@ export function CardForm({
         )}
 
         {notice && <p className="mt-3 text-sm text-muted">{notice}</p>}
+        {phoneticLookup.notice && <p className="mt-3 text-sm text-muted">{phoneticLookup.notice}</p>}
 
         <label className="mt-8 block font-mono text-xs uppercase tracking-wider text-muted">
           Tradução
@@ -148,14 +154,20 @@ export function CardForm({
           />
         </div>
 
-        <label className="mt-8 block font-mono text-xs uppercase tracking-wider text-muted">
+        <label className="mt-8 flex items-center gap-2 font-mono text-xs uppercase tracking-wider text-muted">
           Fonética
+          {phoneticLookup.status === 'loading' && (
+            <span className="normal-case tracking-normal text-signal animate-pulse">
+              buscando pronúncia…
+            </span>
+          )}
         </label>
         <input
           value={phonetic}
           onChange={(e) => setPhonetic(e.target.value)}
+          disabled={phoneticLookup.status === 'loading'}
           placeholder="ˈbərd(ə)n"
-          className="mt-2 w-full rounded-xl border border-line bg-surface px-4 py-3 font-mono text-lg text-signal outline-none placeholder:text-muted/40 focus:border-signal"
+          className="mt-2 w-full rounded-xl border border-line bg-surface px-4 py-3 font-mono text-lg text-signal outline-none placeholder:text-muted/40 focus:border-signal disabled:opacity-60"
         />
 
         <HintsEditor hints={hints} onChange={setHints} />
