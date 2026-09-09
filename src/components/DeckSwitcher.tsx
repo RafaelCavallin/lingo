@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useDeck } from '../contexts/DeckContext'
-import { dueCount } from '../services/scheduler'
+import { queueCount } from '../services/scheduler'
+import { DueBadge } from './DueBadge'
+import { useDueTick } from './useDueTick'
 import type { Deck } from '../services/db'
 
 export function DeckSwitcher({ onClose }: { onClose: () => void }) {
@@ -57,19 +59,21 @@ export function DeckSwitcher({ onClose }: { onClose: () => void }) {
                   className="min-w-0 flex-1 rounded-lg border border-signal bg-transparent px-2 py-1 text-sm outline-none"
                 />
               ) : (
-                <button
-                  onClick={() => {
-                    switchDeck(d.id)
-                    onClose()
-                  }}
-                  className={`min-w-0 flex-1 truncate text-left text-sm ${
-                    d.id === deck?.id ? 'font-medium text-signal' : 'text-text'
-                  }`}
-                >
-                  {d.name}
-                </button>
+                <div className="flex min-w-0 flex-1 items-center gap-2">
+                  <button
+                    onClick={() => {
+                      switchDeck(d.id)
+                      onClose()
+                    }}
+                    className={`min-w-0 truncate text-left text-sm ${
+                      d.id === deck?.id ? 'font-medium text-signal' : 'text-text'
+                    }`}
+                  >
+                    {d.name}
+                  </button>
+                  <DeckDueBadge deck={d} />
+                </div>
               )}
-              <DueBadge deckId={d.id} />
               <button
                 onClick={() => {
                   setEditingId(d.id)
@@ -118,8 +122,8 @@ export function DeckSwitcher({ onClose }: { onClose: () => void }) {
   )
 }
 
-function DueBadge({ deckId }: { deckId: string }) {
-  const due = useLiveQuery(() => dueCount(deckId), [deckId])
-  if (!due) return null
-  return <span className="shrink-0 font-mono text-[10px] text-signal">{due}</span>
+function DeckDueBadge({ deck }: { deck: Deck }) {
+  const tick = useDueTick()
+  const count = useLiveQuery(() => queueCount(deck), [deck, tick]) ?? 0
+  return <DueBadge count={count} label={`${count} para revisar`} />
 }

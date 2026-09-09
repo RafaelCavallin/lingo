@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, downloadBackup, liveCards, type Deck } from '../services/db'
 import { buildQueue, estimateMinutes } from '../services/scheduler'
 import { Heatmap, iso } from '../components/Heatmap'
 import { speech } from '../services/audio'
 import { DeckSwitcher } from '../components/DeckSwitcher'
+import { DueBadge } from '../components/DueBadge'
+import { useDueTick, useTotalDueCount } from '../components/useDueTick'
 import { MobileNav } from '../components/MobileNav'
 import { useAuth } from '../contexts/AuthContext'
 import { displayName } from '../services/auth'
@@ -35,6 +37,13 @@ export function Home({
   const [queueSize, setQueueSize] = useState<number | null>(null)
   const [minutes, setMinutes] = useState(0)
   const [switcherOpen, setSwitcherOpen] = useState(false)
+  const tick = useDueTick()
+  // Soma de todos os baralhos: o número gigante é só o baralho ativo, e o
+  // badge existe justamente para revelar o que está pendente fora dele.
+  const totalDue = useTotalDueCount()
+  // Um cartão só precisa ser aquecido uma vez; sem isto o relógio reenviaria
+  // o mesmo áudio para o /api/tts a cada meio minuto.
+  const warmed = useRef(new Set<string>())
 
   const total = useLiveQuery(() => liveCards(deck.id).count(), [deck.id])
   const reviewedToday = useLiveQuery(() => {
@@ -58,10 +67,14 @@ export function Home({
       setQueueSize(q.length)
       // Baixa o áudio das primeiras frases enquanto o usuário ainda está na
       // home: ao tocar em "Estudar" o som já está em disco.
-      for (const c of q.slice(0, WARM_ON_HOME)) void speech.warm(c.id, c.sentence)
+      for (const c of q.slice(0, WARM_ON_HOME)) {
+        if (warmed.current.has(c.id)) continue
+        warmed.current.add(c.id)
+        void speech.warm(c.id, c.sentence)
+      }
       setMinutes(await estimateMinutes(q.length))
     })
-  }, [deck, reviewedToday, total])
+  }, [deck, reviewedToday, total, tick])
 
   const empty = (total ?? 0) === 0
   const hasHistory = (byDay?.size ?? 0) > 0
@@ -74,9 +87,14 @@ export function Home({
         <div className="hidden min-w-0 items-baseline gap-4 md:flex">
           <button
             onClick={() => setSwitcherOpen(true)}
-            className="truncate font-mono text-xs text-muted transition hover:text-signal"
+            className="flex min-w-0 items-center gap-1.5 font-mono text-xs text-muted transition hover:text-signal"
           >
-            {deck.name} ▾
+            <DueBadge
+              count={totalDue}
+              label={`${totalDue} para revisar em todos os baralhos`}
+              className="-translate-y-1"
+            />
+            <span className="truncate">{deck.name} ▾</span>
           </button>
           {/* O login vivia escondido dentro de Ajustes; aqui ele fica a um toque
               em qualquer sessão, sem competir com o botão de estudar. */}

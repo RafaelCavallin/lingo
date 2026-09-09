@@ -5,6 +5,8 @@ import { useAuth } from '../contexts/AuthContext'
 import { displayName } from '../services/auth'
 import { downloadBackup } from '../services/db'
 import { DeckSwitcher } from './DeckSwitcher'
+import { DueBadge } from './DueBadge'
+import { useTotalDueCount } from './useDueTick'
 
 const ITEMS: { screen: Screen; label: string }[] = [
   { screen: 'home', label: 'Início' },
@@ -24,6 +26,7 @@ export function MobileNav() {
   const { screen, navigate } = useNavigation()
   const { deck } = useDeck()
   const { configured: syncConfigured, session } = useAuth()
+  const totalDue = useTotalDueCount()
   const [open, setOpen] = useState(false)
   const [switcherOpen, setSwitcherOpen] = useState(false)
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -60,10 +63,10 @@ export function MobileNav() {
       <button
         ref={triggerRef}
         onClick={() => setOpen(true)}
-        aria-label="Abrir menu"
+        aria-label={totalDue ? 'Abrir menu — há cartões para revisar' : 'Abrir menu'}
         aria-expanded={open}
         aria-controls="mobile-nav"
-        className="-mr-2 shrink-0 self-center p-2 text-muted transition hover:text-signal md:hidden"
+        className="relative -mr-2 shrink-0 self-center p-2 text-muted transition hover:text-signal md:hidden"
       >
         {/* Não há biblioteca de ícones no projeto; três traços à mão. */}
         <svg
@@ -79,6 +82,10 @@ export function MobileNav() {
         >
           <path d="M3 5h14M3 10h14M3 15h14" />
         </svg>
+        {/* Ponto em vez de número: no ☰ não cabe contagem, e o menu logo abre. */}
+        {totalDue > 0 && (
+          <span aria-hidden="true" className="absolute right-1 top-1 h-2 w-2 rounded-full bg-signal" />
+        )}
       </button>
 
       {open && (
@@ -138,10 +145,15 @@ export function MobileNav() {
                     setOpen(false)
                     setSwitcherOpen(true)
                   }}
-                  className="flex w-full items-baseline justify-between gap-2 rounded-xl px-2 py-3 text-left transition hover:bg-line/40"
+                  className="flex w-full items-center justify-between gap-2 rounded-xl px-2 py-3 text-left transition hover:bg-line/40"
                 >
-                  <span className="min-w-0 truncate text-sm text-text">{deck.name}</span>
-                  <span className="shrink-0 font-mono text-[10px] uppercase tracking-wider text-muted">trocar</span>
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span className="min-w-0 truncate text-sm text-text">{deck.name}</span>
+                    <DueBadge count={totalDue} label={`${totalDue} para revisar em todos os baralhos`} />
+                  </span>
+                  <span className="shrink-0 font-mono text-[10px] uppercase tracking-wider text-muted">
+                    trocar
+                  </span>
                 </button>
               )}
               {syncConfigured && (

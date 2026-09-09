@@ -5,10 +5,11 @@ import {
   applyFsrsParameters,
   answer,
   buildQueue,
-  dueCount,
   estimateMinutes,
   formatInterval,
   newCard,
+  queueCount,
+  totalQueueCount,
 } from './scheduler'
 import { resetDb } from '../test/dbHelpers'
 
@@ -174,8 +175,8 @@ describe('applyFsrsParameters', () => {
   })
 })
 
-describe('dueCount', () => {
-  it('conta só os vencidos vivos do deck, ignorando novos e futuros', async () => {
+describe('queueCount', () => {
+  it('conta a fila do dia do baralho: vencidos e os novos que couberem', async () => {
     await db.cards.bulkAdd([
       makeCard({ id: 'vencido' }),
       makeCard({ id: 'futuro', due: NOW.getTime() + DAY }),
@@ -184,7 +185,32 @@ describe('dueCount', () => {
       makeCard({ id: 'outro-deck', deckId: 'd2' }),
     ])
 
-    expect(await dueCount('d1')).toBe(1)
+    expect(await queueCount(makeDeck())).toBe(2)
+  })
+
+  it('respeita o limite de novos por dia do baralho', async () => {
+    await db.cards.bulkAdd([
+      makeCard({ id: 'novo-1', state: State.New }),
+      makeCard({ id: 'novo-2', state: State.New }),
+    ])
+
+    expect(await queueCount(makeDeck({ newCardsPerDay: 1 }))).toBe(1)
+  })
+})
+
+describe('totalQueueCount', () => {
+  it('soma os baralhos, para o aviso de fila fora do ativo', async () => {
+    await db.cards.bulkAdd([
+      makeCard({ id: 'a' }),
+      makeCard({ id: 'b', deckId: 'd2' }),
+      makeCard({ id: 'c', deckId: 'd2', state: State.New }),
+    ])
+
+    expect(await totalQueueCount([makeDeck(), makeDeck({ id: 'd2' })])).toBe(3)
+  })
+
+  it('devolve zero sem baralhos', async () => {
+    expect(await totalQueueCount([])).toBe(0)
   })
 })
 

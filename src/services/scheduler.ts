@@ -100,14 +100,6 @@ export async function answer(card: Card, rating: BinaryRating, durationMs: numbe
   })
 }
 
-/** Contagem crua de vencidos, para o seletor de baralhos — sem os limites de sessão do buildQueue. */
-export async function dueCount(deckId: string): Promise<number> {
-  const now = Date.now()
-  return liveCards(deckId)
-    .filter((c) => c.state !== State.New && c.due <= now)
-    .count()
-}
-
 /** Cartões "young": ainda não consolidados. Base do limite inteligente. */
 function isYoung(c: Card): boolean {
   if (c.state === State.Learning || c.state === State.Relearning) return true
@@ -139,6 +131,21 @@ export async function buildQueue(deck: Deck): Promise<Card[]> {
     .slice(0, room)
 
   return interleave(due, fresh)
+}
+
+/**
+ * Tamanho da fila de hoje, para os badges. Sai do próprio buildQueue de
+ * propósito: um badge que contasse só os vencidos ignoraria os cartões novos
+ * e mostraria menos do que a home promete ao entrar no baralho.
+ */
+export async function queueCount(deck: Deck): Promise<number> {
+  return (await buildQueue(deck)).length
+}
+
+/** Soma de vários baralhos — o total pendente que o badge do cabeçalho mostra. */
+export async function totalQueueCount(decks: Deck[]): Promise<number> {
+  const sizes = await Promise.all(decks.map(queueCount))
+  return sizes.reduce((sum, n) => sum + n, 0)
 }
 
 async function countIntroducedToday(deckId: string): Promise<number> {
