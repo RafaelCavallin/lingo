@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 
 const CELL = 11
 const GAP = 3
@@ -11,12 +11,20 @@ const MONTHS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', '
  */
 export function Heatmap({ counts }: { counts: Map<string, number> }) {
   const { cells, monthMarks, max } = useMemo(() => build(counts), [counts])
+  const scrollRef = useRef<HTMLElement>(null)
 
   const width = WEEKS * (CELL + GAP)
   const height = 7 * (CELL + GAP) + 16
 
+  // Em telas estreitas a grade não cabe inteira: começa mostrando o mês
+  // atual (a ponta mais recente), não os meses mais antigos.
+  useEffect(() => {
+    const el = scrollRef.current
+    if (el) el.scrollLeft = el.scrollWidth
+  }, [width])
+
   return (
-    <figure className="overflow-x-auto">
+    <figure ref={scrollRef} className="overflow-x-auto">
       <svg
         width={width}
         height={height}
