@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { db, deleteCard, type Card, type Deck } from '../services/db'
+import { type Card, type Deck } from '../services/db'
 import { answer, buildQueue } from '../services/scheduler'
 import { speech, normalRate, slowRate } from '../services/audio'
 import { Waveform } from '../components/Waveform'
 import { MarkedText } from '../components/MarkedText'
 import { VoiceCompare } from '../components/VoiceCompare'
-import { EditCard } from './EditCard'
 
 /** Fundo suficiente para cobrir a resposta mais rápida sem baixar a fila toda. */
 const PREFETCH_AHEAD = 2
@@ -19,7 +18,6 @@ export function Review({ deck, onDone }: { deck: Deck; onDone: () => void }) {
   const [audioStatus, setAudioStatus] = useState<AudioStatus>('idle')
   const [audioError, setAudioError] = useState<string | null>(null)
   const [done, setDone] = useState(0)
-  const [editing, setEditing] = useState(false)
   const shownAt = useRef(Date.now())
   // Descarta o resultado de um play() que não é mais o mais recente — o
   // StrictMode do React roda o efeito de troca de cartão duas vezes em dev
@@ -83,32 +81,8 @@ export function Review({ deck, onDone }: { deck: Deck; onDone: () => void }) {
     setIndex((i) => i + 1)
   }
 
-  // Tirar da fila em vez de avançar o índice: com um item a menos, o índice
-  // atual já aponta para o próximo cartão, e o efeito de troca de card cuida
-  // de tocar o áudio dele sozinho.
-  async function remove() {
-    if (!card) return
-    if (!confirm('Excluir esta frase? Não tem como desfazer.')) return
-    speech.stop()
-    const id = card.id
-    await deleteCard(id)
-    setQueue((q) => q?.filter((c) => c.id !== id) ?? q)
-  }
-
-  // Editar não é responder: nada de answer()/FSRS aqui. Só recarrega o card
-  // do banco para a fila em memória mostrar o texto novo, e zera o relógio
-  // para o tempo gasto editando não inflar a duração da próxima resposta.
-  async function finishEdit() {
-    setEditing(false)
-    if (!card) return
-    const fresh = await db.cards.get(card.id)
-    if (fresh) setQueue((q) => q?.map((c) => (c.id === fresh.id ? fresh : c)) ?? q)
-    shownAt.current = Date.now()
-  }
-
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (editing) return
       if (e.code === 'Space') {
         e.preventDefault()
         revealed ? void rate('good') : setRevealed(true)
@@ -144,8 +118,6 @@ export function Review({ deck, onDone }: { deck: Deck; onDone: () => void }) {
       </Shell>
     )
   }
-
-  if (editing) return <EditCard card={card} onDone={() => void finishEdit()} />
 
   return (
     <div className="mx-auto flex min-h-dvh max-w-2xl flex-col px-5 pb-[calc(2rem+env(safe-area-inset-bottom))] pt-6">
@@ -197,21 +169,6 @@ export function Review({ deck, onDone }: { deck: Deck; onDone: () => void }) {
         <div className="mt-6 flex flex-wrap items-center gap-2">
           <AudioButton onClick={() => play(normalRate())} label="Repetir" />
           <AudioButton onClick={() => play(slowRate())} label="Devagar" />
-          <button
-            onClick={() => {
-              speech.stop()
-              setEditing(true)
-            }}
-            className="ml-auto rounded-full border border-line px-4 py-2 font-mono text-xs uppercase tracking-wider text-muted transition hover:border-signal hover:text-signal"
-          >
-            Editar
-          </button>
-          <button
-            onClick={remove}
-            className="rounded-full border border-line px-4 py-2 font-mono text-xs uppercase tracking-wider text-muted transition hover:border-miss hover:text-miss"
-          >
-            Excluir
-          </button>
         </div>
 
         <div className="mt-3">
