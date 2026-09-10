@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { type Card, type Deck } from '../services/db'
 import { answer, buildQueue } from '../services/scheduler'
 import { speech, normalRate, slowRate } from '../services/audio'
+import { repeatLabel } from '../services/audioLabels'
 import { Waveform } from '../components/Waveform'
 import { MarkedText } from '../components/MarkedText'
 import { VoiceCompare } from '../components/VoiceCompare'
@@ -10,12 +11,15 @@ import { VoiceCompare } from '../components/VoiceCompare'
 const PREFETCH_AHEAD = 2
 
 type AudioStatus = 'idle' | 'loading' | 'playing'
+/** Qual botão pediu o áudio — só ele avisa que está tocando. */
+type AudioSource = 'normal' | 'slow'
 
 export function Review({ deck, onDone }: { deck: Deck; onDone: () => void }) {
   const [queue, setQueue] = useState<Card[] | null>(null)
   const [index, setIndex] = useState(0)
   const [revealed, setRevealed] = useState(false)
   const [audioStatus, setAudioStatus] = useState<AudioStatus>('idle')
+  const [audioSource, setAudioSource] = useState<AudioSource>('normal')
   const [audioError, setAudioError] = useState<string | null>(null)
   const [done, setDone] = useState(0)
   const shownAt = useRef(Date.now())
@@ -33,10 +37,11 @@ export function Review({ deck, onDone }: { deck: Deck; onDone: () => void }) {
   }, [deck])
 
   const play = useCallback(
-    async (rate: number) => {
+    async (rate: number, source: AudioSource) => {
       if (!card) return
       const token = ++playToken.current
       setAudioError(null)
+      setAudioSource(source)
       setAudioStatus('loading')
       try {
         await speech.speak(card.id, card.sentence, rate, () => {
@@ -59,7 +64,7 @@ export function Review({ deck, onDone }: { deck: Deck; onDone: () => void }) {
     if (!card) return
     shownAt.current = Date.now()
     setRevealed(false)
-    void play(normalRate())
+    void play(normalRate(), 'normal')
     return () => speech.stop()
   }, [card, play])
 
@@ -77,7 +82,7 @@ export function Review({ deck, onDone }: { deck: Deck; onDone: () => void }) {
     await answer(card, rating, Date.now() - shownAt.current)
     setDone((d) => d + 1)
     // Ao errar, o áudio toca de novo com a resposta à vista antes de seguir.
-    if (rating === 'again') await play(normalRate())
+    if (rating === 'again') await play(normalRate(), 'normal')
     setIndex((i) => i + 1)
   }
 
@@ -89,7 +94,7 @@ export function Review({ deck, onDone }: { deck: Deck; onDone: () => void }) {
       }
       if (e.key === '1' && revealed) void rate('again')
       if (e.key === '2' && revealed) void rate('good')
-      if (e.key === 'r') void play(normalRate())
+      if (e.key === 'r') void play(normalRate(), 'normal')
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -167,8 +172,11 @@ export function Review({ deck, onDone }: { deck: Deck; onDone: () => void }) {
         )}
 
         <div className="mt-6 flex flex-wrap items-center gap-2">
-          <AudioButton onClick={() => play(normalRate())} label="Repetir" />
-          <AudioButton onClick={() => play(slowRate())} label="Devagar" />
+          <AudioButton
+            onClick={() => play(normalRate(), 'normal')}
+            label={repeatLabel(audioStatus === 'playing' && audioSource === 'normal')}
+          />
+          <AudioButton onClick={() => play(slowRate(), 'slow')} label="Devagar" />
         </div>
 
         <div className="mt-3">

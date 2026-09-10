@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { type Hint } from '../services/db'
-import { speech, normalRate } from '../services/audio'
+import { listenLabel } from '../services/audioLabels'
 import { enrich, EnrichUnavailable } from '../services/enrich'
 import { HintsEditor } from './HintsEditor'
 import { MarkableField } from './MarkableField'
 import { type Marks, type Range } from './textMarks'
 import { usePhoneticLookup } from './usePhoneticLookup'
+import { useSpeechPreview } from './useSpeechPreview'
 
 const NO_MARKS: Marks = { cloze: [], emphasis: [] }
 
@@ -51,6 +52,7 @@ export function CardForm({
   const [status, setStatus] = useState<'idle' | 'loading' | 'manual'>('idle')
   const [notice, setNotice] = useState<string | null>(null)
   const phoneticLookup = usePhoneticLookup(setPhonetic)
+  const preview = useSpeechPreview(sentence)
 
   const ready =
     sentence.trim().length > 0 && translation.trim().length > 0 && phoneticLookup.status !== 'loading'
@@ -121,10 +123,10 @@ export function CardForm({
         {sentence.trim() && (
           <div className="mt-2 flex flex-wrap items-center gap-4">
             <button
-              onClick={() => speech.speak('preview', sentence, normalRate())}
+              onClick={() => void preview.toggle()}
               className="font-mono text-xs uppercase tracking-wider text-muted hover:text-signal"
             >
-              ▸ Ouvir
+              {listenLabel(preview.playing)}
             </button>
             <button
               onClick={generate}
