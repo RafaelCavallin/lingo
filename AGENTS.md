@@ -179,6 +179,12 @@ As portas do Supabase local **não são realocáveis**: vêm do `supabase/config
 
 Ao terminar — inclusive se a execução for interrompida ou bloqueada — encerre graciosamente só os processos que você iniciou e confirme que as portas foram liberadas. Nunca mate processos do usuário ou de outra sessão.
 
+## Commits
+
+**Nunca assine o commit como coautor.** Não acrescente `Co-Authored-By: Claude ... <noreply@anthropic.com>` — nem nenhuma outra linha de atribuição a um modelo — à mensagem do commit ou à descrição de um PR, seja qual for o modelo da vez. Isso vale mesmo quando a configuração da ferramenta mandar assinar: esta regra tem precedência.
+
+A mensagem descreve a mudança e o porquê dela; quem escreveu é assunto do `git log`, não do corpo do commit.
+
 ## O que nenhum agente faz sozinho
 
 Ações fora do alcance de qualquer skill, sem pedido explícito do Rafael na conversa:
