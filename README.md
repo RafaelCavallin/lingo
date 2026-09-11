@@ -16,6 +16,7 @@ Diferente de um flashcard tradicional, o Lingo trata cada cartão como uma frase
 - **Importação de baralhos do Anki** (`.apkg`) com mapeamento de campos e prévia — traz o conteúdo, não o histórico.
 - **Progresso** — retenção de 30 dias, sequência de dias, previsão de carga futura e heatmap de constância.
 - **Múltiplos baralhos**, com troca rápida, e exclusão de cartões e baralhos.
+- **Backup e restauração** em um arquivo `.zip` — leva baralhos, cartões, histórico e as gravações da sua voz (as narrações são opcionais), e volta mesclando ou substituindo o conteúdo do aparelho.
 - **Conta opcional** (email e senha) — sincroniza baralhos, cartões e histórico entre aparelhos via Supabase (Postgres + RLS); sem conta, o app funciona 100% offline igual antes.
 - **Otimizador do FSRS** rodando em Web Worker (wasm) sobre o seu próprio histórico.
 - **Voz neural opcional** (TTS em nuvem) com MP3 em cache local; sem chave configurada, usa a voz do navegador.
@@ -58,7 +59,8 @@ A geração automática de tradução/dicas funciona com Anthropic (padrão) ou 
 ```
 src/
   services/
-    db.ts          Schema Dexie e backup
+    db.ts          Schema Dexie (baralhos, cartões, histórico, áudio)
+    backup*.ts     Backup em ZIP e restauração (formato, geração, plano, aplicação)
     scheduler.ts   Wrapper do ts-fsrs, fila do dia e limite de novos cartões
     audio.ts       SpeechProvider (voz neural | voz do navegador), com fallback
     enrich.ts      Cliente de /api/enrich + validação Zod

@@ -1,5 +1,14 @@
 import 'fake-indexeddb/auto'
+import { Blob as NodeBlob } from 'node:buffer'
 import { vi } from 'vitest'
+
+/**
+ * O `Blob` do jsdom não é serializável pelo `structuredClone` do Node, que é o
+ * que o fake-indexeddb usa para gravar: um blob de áudio guardado voltaria do
+ * banco como objeto simples, sem `type`, sem `size` e sem conteúdo. O `Blob` do
+ * Node sobrevive à ida e volta.
+ */
+Object.defineProperty(globalThis, 'Blob', { configurable: true, writable: true, value: NodeBlob })
 
 /**
  * jsdom não implementa a Web Locks API. Por padrão o fake concede o lock

@@ -21,7 +21,7 @@ export default defineConfig({
       provider: 'v8',
       // A camada de UI (screens/components React, contexts) fica fora do gate:
       // ela é validada por e2e no Playwright, não por cobertura de unidade.
-      include: ['src/services/**/*.ts', 'src/components/textMarks.ts'],
+      include: ['src/services/**/*.ts', 'src/components/textMarks.ts', 'src/components/restoreConfirm.ts'],
       exclude: ['**/*.test.ts'],
       thresholds: { statements: 80, branches: 80, functions: 80, lines: 80 },
       reporter: ['text', 'html'],
@@ -44,7 +44,9 @@ export default defineConfig({
         // /api/* nunca é cacheado: sempre rede, com erro tratado na UI.
         navigateFallbackDenylist: [/^\/api/],
         // O wasm do sql.js só serve para importar do Anki: fica fora do
-        // precache para não pesar na instalação do PWA.
+        // precache para não pesar na instalação do PWA. O JSZip, ao contrário,
+        // fica dentro: backup e restauração têm de funcionar offline, e um
+        // chunk ausente do precache exigiria rede na primeira vez.
         // Fora do precache: só quem importa do Anki ou abre o progresso baixa.
         globIgnores: [
           '**/*.wasm',

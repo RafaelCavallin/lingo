@@ -5,6 +5,8 @@ import { lastSyncAt, syncNow } from '../services/sync'
 import { useAuth } from '../contexts/AuthContext'
 import { MIN_REVIEWS, NotEnoughData, optimize, reviewCount } from '../services/optimizer'
 import { MobileNav } from '../components/MobileNav'
+import { BackupSection } from '../components/BackupSection'
+import { Message, Section, Toggle } from '../components/SettingsControls'
 
 const SAMPLE = 'This is how your sentences will sound.'
 
@@ -232,6 +234,8 @@ export function Settings({
           </Section>
         )}
 
+        <BackupSection />
+
         <Section title="Otimizar agendamento">
           <p className="text-sm text-muted">
             Reaprende os parâmetros do FSRS a partir do seu histórico, em vez dos padrões. Roda no
@@ -254,56 +258,5 @@ export function Settings({
         </Section>
       </main>
     </div>
-  )
-}
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <section className="mt-10 border-t border-line pt-8 first:border-0">
-      <h2 className="font-mono text-xs uppercase tracking-[0.2em] text-signal">{title}</h2>
-      <div className="mt-4">{children}</div>
-    </section>
-  )
-}
-
-function Toggle({
-  label,
-  checked,
-  onChange,
-  hint,
-}: {
-  label: string
-  checked: boolean
-  onChange: (v: boolean) => void
-  hint: string
-}) {
-  return (
-    <label className="flex cursor-pointer items-start gap-4">
-      <button
-        role="switch"
-        aria-checked={checked}
-        onClick={() => onChange(!checked)}
-        className={`mt-1 h-6 w-11 shrink-0 rounded-full p-[3px] transition ${
-          checked ? 'bg-signal' : 'bg-line'
-        }`}
-      >
-        <span
-          className={`block h-[18px] w-[18px] rounded-full bg-ink transition-transform ${
-            checked ? 'translate-x-5' : ''
-          }`}
-        />
-      </button>
-      <span>
-        <span className="block font-medium">{label}</span>
-        <span className="mt-1 block text-sm text-muted">{hint}</span>
-      </span>
-    </label>
-  )
-}
-
-function Message({ state }: { state: { message: string | null; tone: 'ok' | 'bad' | null } }) {
-  if (!state.message) return null
-  return (
-    <p className={`mt-3 text-sm ${state.tone === 'bad' ? 'text-miss' : 'text-hit'}`}>{state.message}</p>
   )
 }

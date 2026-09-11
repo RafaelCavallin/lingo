@@ -70,7 +70,9 @@ async function remoteSummary(): Promise<DataSummary> {
  * Sem isto, todo cadastro novo criaria um segundo deck "Frases em inglês"
  * ao lado do que a conta já tiver (ou vai ter, no próximo aparelho).
  */
-async function isUntouchedDefaultDeck(): Promise<boolean> {
+/** Exportada para a restauração de backup, que enfrenta o mesmo caso do
+ *  login: o baralho semeado na primeira abertura não é dado do usuário. */
+export async function isUntouchedDefaultDeck(): Promise<boolean> {
   const decks = await db.decks.filter((d) => d.deletedAt === 0).toArray()
   if (decks.length !== 1 || decks[0].name !== DEFAULT_DECK_NAME) return false
   const [cardCount, logCount] = await Promise.all([

@@ -1,6 +1,15 @@
 import { createContext, useContext, type ReactNode } from 'react'
 
-export type Screen = 'home' | 'review' | 'add' | 'import' | 'progress' | 'settings' | 'cards' | 'account'
+export type Screen =
+  | 'home'
+  | 'review'
+  | 'add'
+  | 'import'
+  | 'progress'
+  | 'settings'
+  | 'cards'
+  | 'account'
+  | 'restore'
 
 interface NavigationContextValue {
   /** Tela em exibição — usado pelo menu para destacar o item atual. */

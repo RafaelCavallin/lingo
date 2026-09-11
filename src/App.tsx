@@ -15,6 +15,8 @@ import { Account } from './screens/Account'
 import { NoDeck } from './screens/NoDeck'
 // Recharts só é baixado por quem abre o progresso — o caminho de estudo fica leve.
 const Progress = lazy(() => import('./screens/Progress').then((m) => ({ default: m.Progress })))
+// Restaurar é raro e traz o JSZip junto: fica fora do carregamento inicial.
+const Restore = lazy(() => import('./screens/Restore').then((m) => ({ default: m.Restore })))
 
 export default function App() {
   return (
@@ -82,6 +84,12 @@ function AppShell() {
       return <Settings deck={deck} onBack={goHome} onAccount={() => setScreen('account')} />
     if (screen === 'cards') return <Cards deck={deck} onBack={goHome} />
     if (screen === 'account') return <Account onBack={goHome} />
+    if (screen === 'restore')
+      return (
+        <Suspense fallback={<div className="p-6 font-mono text-xs text-muted">Carregando…</div>}>
+          <Restore onBack={goHome} />
+        </Suspense>
+      )
     if (screen === 'progress')
       return (
         <Suspense fallback={<div className="p-6 font-mono text-xs text-muted">Carregando…</div>}>

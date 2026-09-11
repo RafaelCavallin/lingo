@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, downloadBackup, liveCards, type Deck } from '../services/db'
+import { db, liveCards, type Deck } from '../services/db'
 import { buildQueue, estimateMinutes } from '../services/scheduler'
 import { Heatmap, iso } from '../components/Heatmap'
 import { speech } from '../services/audio'
@@ -186,7 +186,6 @@ export function Home({
           <FooterLink onClick={onImport}>Importar</FooterLink>
           <FooterLink onClick={onCards}>Cartões</FooterLink>
           <FooterLink onClick={onProgress}>Progresso</FooterLink>
-          <FooterLink onClick={() => void downloadBackup()}>Backup</FooterLink>
           <FooterLink onClick={onSettings}>Ajustes</FooterLink>
         </nav>
         <span className="whitespace-nowrap">

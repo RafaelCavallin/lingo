@@ -4,17 +4,14 @@ import {
   db,
   deleteCard,
   deleteDeck,
-  downloadBackup,
   ensureDefaultDeck,
-  exportBackup,
   liveCards,
   updateCard,
   type AudioBlob,
   type Card,
   type Deck,
-  type ReviewLog,
 } from './db'
-import { resetDb, stubObjectUrl } from '../test/dbHelpers'
+import { resetDb } from '../test/dbHelpers'
 
 function makeDeck(overrides: Partial<Deck> = {}): Deck {
   return {
@@ -69,11 +66,7 @@ function makeBlob(overrides: Partial<AudioBlob> = {}): AudioBlob {
   }
 }
 
-let restoreObjectUrl = () => {}
-
 afterEach(async () => {
-  restoreObjectUrl()
-  restoreObjectUrl = () => {}
   vi.useRealTimers()
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
@@ -333,55 +326,5 @@ describe('deleteDeck', () => {
     await deleteDeck('d1')
 
     expect((await db.cards.get('c3'))!.deletedAt).toBe(0)
-  })
-})
-
-describe('exportBackup', () => {
-  it('serializa decks, cards e logs na versão 2, incluindo tombstones', async () => {
-    vi.spyOn(Date, 'now').mockReturnValue(4242)
-    await db.decks.add(makeDeck({ id: 'd1' }))
-    await db.cards.bulkAdd([makeCard({ id: 'c1' }), makeCard({ id: 'c2', deletedAt: 10 })])
-    await db.reviewLogs.add({
-      id: 'l1',
-      cardId: 'c1',
-      deckId: 'd1',
-      rating: 'good',
-      reviewedAt: 1200,
-      stateBefore: 0,
-      scheduledDays: 1,
-      durationMs: 3000,
-      dirty: 0,
-    })
-
-    const payload = JSON.parse(await (await exportBackup()).text()) as {
-      version: number
-      exportedAt: number
-      decks: Deck[]
-      cards: Card[]
-      reviewLogs: ReviewLog[]
-    }
-
-    expect(payload.version).toBe(2)
-    expect(payload.exportedAt).toBe(4242)
-    expect(payload.decks).toHaveLength(1)
-    expect(payload.cards.map((c) => c.id)).toEqual(['c1', 'c2'])
-    expect(payload.reviewLogs[0].deckId).toBe('d1')
-  })
-})
-
-describe('downloadBackup', () => {
-  it('dispara o download com o nome no formato lingo-backup-AAAA-MM-DD.json', async () => {
-    vi.useFakeTimers({ toFake: ['Date'] })
-    vi.setSystemTime(new Date('2026-03-09T10:00:00Z'))
-    const { revokeObjectURL, restore } = stubObjectUrl('blob:fake')
-    restoreObjectUrl = restore
-    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
-
-    await downloadBackup()
-
-    const anchor = click.mock.instances[0] as HTMLAnchorElement
-    expect(anchor.download).toBe('lingo-backup-2026-03-09.json')
-    expect(anchor.href).toBe('blob:fake')
-    expect(revokeObjectURL).toHaveBeenCalledWith('blob:fake')
   })
 })

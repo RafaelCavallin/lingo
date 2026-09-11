@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { db, type Card, type Deck, type ReviewLog } from './db'
 import { getBoundUserId, PULL_CURSOR_KEYS } from './auth'
 import { getSupabase, isSyncConfigured } from './supabase'
+import { wins } from './lww'
 import {
   parseCardRow,
   parseDeckRow,
@@ -138,15 +139,6 @@ async function pullTable(
 
 function keepParsed<T>(items: (Parsed<T> | null)[]): Parsed<T>[] {
   return items.filter((x): x is Parsed<T> => x !== null)
-}
-
-/** Desempate determinístico por id quando `updatedAt` empata — sem isto, dois
- *  aparelhos editando no mesmo milissegundo nunca convergem: cada um rejeita
- *  o outro como "não mais novo". */
-function wins(remote: { id: string; updatedAt: number }, local: { id: string; updatedAt: number } | undefined) {
-  if (!local) return true
-  if (remote.updatedAt !== local.updatedAt) return remote.updatedAt > local.updatedAt
-  return remote.id > local.id
 }
 
 async function applyDecks(rows: unknown[], cursorKey: string): Promise<number> {

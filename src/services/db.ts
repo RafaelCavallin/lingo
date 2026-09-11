@@ -327,27 +327,3 @@ export async function deleteDeck(deckId: string): Promise<void> {
     await db.audioBlobs.bulkDelete(blobs.map((b) => b.id))
   })
 }
-
-/** Backup exportável desde a Fase 1 (mitigação de risco: IndexedDB pode ser apagado). */
-export async function exportBackup(): Promise<Blob> {
-  const [decks, cards, reviewLogs] = await Promise.all([
-    db.decks.toArray(),
-    db.cards.toArray(),
-    db.reviewLogs.toArray(),
-  ])
-  // version 2: cards/decks carregam agora dirty/deletedAt e os logs têm deckId.
-  // Tombstones vão junto de propósito — é backup, não a fila de estudo.
-  const payload = { version: 2, exportedAt: Date.now(), decks, cards, reviewLogs }
-  return new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
-}
-
-/** Dispara o download do backup. Fica aqui porque o nome do arquivo faz parte
- *  do formato — Home e menu chamam o mesmo caminho. */
-export async function downloadBackup(): Promise<void> {
-  const url = URL.createObjectURL(await exportBackup())
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `lingo-backup-${new Date().toISOString().slice(0, 10)}.json`
-  a.click()
-  URL.revokeObjectURL(url)
-}

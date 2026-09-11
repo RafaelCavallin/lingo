@@ -3,7 +3,6 @@ import { useNavigation, type Screen } from '../contexts/NavigationContext'
 import { useDeck } from '../contexts/DeckContext'
 import { useAuth } from '../contexts/AuthContext'
 import { displayName } from '../services/auth'
-import { downloadBackup } from '../services/db'
 import { DeckSwitcher } from './DeckSwitcher'
 import { DueBadge } from './DueBadge'
 import { useTotalDueCount } from './useDueTick'
@@ -126,16 +125,6 @@ export function MobileNav() {
                   {item.label}
                 </button>
               ))}
-              {/* Backup é ação, não tela — nunca fica marcado como atual. */}
-              <button
-                onClick={() => {
-                  setOpen(false)
-                  void downloadBackup()
-                }}
-                className="rounded-xl px-2 py-3 text-left text-sm text-text transition hover:bg-line/40"
-              >
-                Backup
-              </button>
             </nav>
 
             <div className="mt-auto space-y-1 border-t border-line pt-4">
