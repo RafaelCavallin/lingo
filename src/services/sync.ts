@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { db, type Card, type Deck, type ReviewLog } from './db'
-import { getBoundUserId } from './auth'
+import { getBoundUserId, PULL_CURSOR_KEYS } from './auth'
 import { getSupabase, isSyncConfigured } from './supabase'
 import {
   parseCardRow,
@@ -76,9 +76,10 @@ async function runSync(_reason: SyncReason): Promise<SyncOutcome> {
 
   try {
     let pulled = 0
-    pulled += await pullTable(supabase, 'decks', 'cursor:decks', applyDecks)
-    pulled += await pullTable(supabase, 'cards', 'cursor:cards', applyCards)
-    pulled += await pullTable(supabase, 'review_logs', 'cursor:reviewLogs', applyReviewLogs)
+    const [deckCursor, cardCursor, logCursor] = PULL_CURSOR_KEYS
+    pulled += await pullTable(supabase, 'decks', deckCursor, applyDecks)
+    pulled += await pullTable(supabase, 'cards', cardCursor, applyCards)
+    pulled += await pullTable(supabase, 'review_logs', logCursor, applyReviewLogs)
     const pushed = await pushDirty(supabase)
     const at = Date.now()
     localStorage.setItem(LAST_SYNC_KEY, String(at))

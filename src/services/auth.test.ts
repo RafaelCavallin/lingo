@@ -13,7 +13,7 @@ vi.mock('./supabase', () => ({
   getSupabase: () => Promise.resolve(fakeSupabase.client),
 }))
 
-const { completeSignIn, decideOnSignIn, displayName, getBoundUserId } = await import('./auth')
+const { completeSignIn, decideOnSignIn, displayName, getBoundUserId, PULL_CURSOR_KEYS } = await import('./auth')
 
 function makeDeck(overrides: Partial<Deck> = {}): Deck {
   return {
@@ -145,6 +145,24 @@ describe('decideOnSignIn', () => {
     expect(decision.local).toEqual({ decks: 1, cards: 1, reviewLogs: 0 })
     expect(decision.remote).toEqual({ decks: 1, cards: 7, reviewLogs: 3 })
   })
+
+  it('auto-adopts into an empty account even when bound to a different one', async () => {
+    await db.decks.add(makeDeck({ id: 'd1', name: 'Meu baralho' }))
+    await db.cards.add(makeCard('d1'))
+    await completeSignIn('user-J', 'merge')
+    setRemoteCounts(0, 0, 0)
+
+    // Conta recriada (ou trocada) sem dado nenhum: não há dois conjuntos para
+    // escolher entre, então não há o que perguntar.
+    expect(await decideOnSignIn('user-K')).toEqual({ kind: 'auto-adopt' })
+  })
+
+  it('auto-adopts an empty device into a full account even when bound to a different one', async () => {
+    await completeSignIn('user-L', 'merge')
+    setRemoteCounts(4, 40, 12)
+
+    expect(await decideOnSignIn('user-M')).toEqual({ kind: 'auto-adopt' })
+  })
 })
 
 describe('completeSignIn', () => {
@@ -172,6 +190,34 @@ describe('completeSignIn', () => {
     expect(await db.cards.count()).toBe(0)
     expect(await db.audioBlobs.count()).toBe(0)
     expect(await getBoundUserId()).toBe('user-H')
+  })
+
+  it('merge: resets the pull cursors when rebinding to a different account', async () => {
+    await completeSignIn('user-N', 'merge')
+    for (const key of PULL_CURSOR_KEYS) {
+      await db.syncState.put({ key, value: '2026-01-01T00:00:00.000Z' })
+    }
+
+    await completeSignIn('user-O', 'merge')
+
+    // Sem isto, o pull pediria linhas mais novas que o cursor da conta velha
+    // e a conta nova pareceria vazia para sempre.
+    for (const key of PULL_CURSOR_KEYS) {
+      expect(await db.syncState.get(key)).toBeUndefined()
+    }
+    expect(await getBoundUserId()).toBe('user-O')
+  })
+
+  it('merge: keeps the pull cursors when the device had no account bound', async () => {
+    for (const key of PULL_CURSOR_KEYS) {
+      await db.syncState.put({ key, value: '2026-01-01T00:00:00.000Z' })
+    }
+
+    await completeSignIn('user-P', 'merge')
+
+    for (const key of PULL_CURSOR_KEYS) {
+      expect(await db.syncState.get(key)).toBeDefined()
+    }
   })
 
   it('cancel: signs out and never binds the account', async () => {

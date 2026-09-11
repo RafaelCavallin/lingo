@@ -25,6 +25,20 @@ async function setBoundUserId(id: string): Promise<void> {
   await db.syncState.put({ key: BOUND_USER_KEY, value: id })
 }
 
+/** Cursores de pull incremental, um por tabela (ver services/sync.ts). */
+export const PULL_CURSOR_KEYS = ['cursor:decks', 'cursor:cards', 'cursor:reviewLogs'] as const
+
+/**
+ * O cursor guarda o `synced_at` da última linha vista — um instante do
+ * relógio do servidor, não um número de versão por conta. As linhas da conta
+ * nova são mais antigas que esse instante, então, sem zerar, o primeiro pull
+ * depois de uma troca de conta pediria `synced_at > <cursor da conta velha>`
+ * e não traria nada: a conta pareceria vazia para sempre.
+ */
+async function clearPullCursors(): Promise<void> {
+  await db.syncState.bulkDelete([...PULL_CURSOR_KEYS])
+}
+
 export interface DataSummary {
   decks: number
   cards: number
@@ -101,10 +115,9 @@ export async function decideOnSignIn(userId: string): Promise<SignInDecision> {
   const bound = await getBoundUserId()
   if (bound === userId) return { kind: 'resume' }
 
-  if (bound !== null) {
-    return { kind: 'account-switch', local: await localSummary(), remote: await remoteSummary() }
-  }
-
+  // O deck padrão intocado é descartado mesmo numa troca de conta: ele não é
+  // dado do usuário, é andaime da primeira abertura, e contá-lo como "dados
+  // deste aparelho" transformaria toda troca de conta num conflito falso.
   if (await isUntouchedDefaultDeck()) {
     await db.transaction('rw', db.decks, db.cards, async () => {
       await db.decks.clear()
@@ -116,7 +129,18 @@ export async function decideOnSignIn(userId: string): Promise<SignInDecision> {
   const remote = await remoteSummary()
   const nothingLocal = local.decks === 0 && local.cards === 0 && local.reviewLogs === 0
   const nothingRemote = remote.decks === 0 && remote.cards === 0 && remote.reviewLogs === 0
+
+  // Lado vazio não é conflito, nem quando o aparelho está vinculado a outra
+  // conta: não há dois conjuntos de dados para escolher entre. Esta checagem
+  // vem antes do `bound !== null` de propósito — com ela depois, entrar numa
+  // conta recém-criada (o caso do usuário que troca de e-mail ou recria a
+  // conta) só oferecia apagar os dados do aparelho.
   if (nothingLocal || nothingRemote) return { kind: 'auto-adopt' }
+
+  // Dados dos dois lados e vínculo com outra conta: nunca mescla contas
+  // diferentes.
+  if (bound !== null) return { kind: 'account-switch', local, remote }
+
   return { kind: 'needs-prompt', local, remote }
 }
 
@@ -128,7 +152,15 @@ export async function completeSignIn(userId: string, plan: SignInPlan): Promise<
     await supabase.auth.signOut()
     return
   }
-  if (plan === 'discard-local') await wipeLocalData()
-  else await adoptLocalData()
+
+  // `wipeLocalData` já limpa a syncState inteira (cursores inclusive); a
+  // adoção preserva os dados locais e por isso precisa zerar os cursores à
+  // mão quando o aparelho estava vinculado a outra conta.
+  if (plan === 'discard-local') {
+    await wipeLocalData()
+  } else {
+    if ((await getBoundUserId()) !== null) await clearPullCursors()
+    await adoptLocalData()
+  }
   await setBoundUserId(userId)
 }
