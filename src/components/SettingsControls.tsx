@@ -20,7 +20,9 @@ export function Toggle({
   label: string
   checked: boolean
   onChange: (v: boolean) => void
-  hint: string
+  /** `ReactNode`, não só `string`: alguns chamadores embutem um `Skeleton`
+   *  inline num trecho da frase enquanto um valor ainda está carregando. */
+  hint: ReactNode
 }) {
   return (
     <label className="flex cursor-pointer items-start gap-4">

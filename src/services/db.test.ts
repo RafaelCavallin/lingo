@@ -5,6 +5,7 @@ import {
   deleteCard,
   deleteDeck,
   ensureDefaultDeck,
+  insertCardsInChunks,
   liveCards,
   updateCard,
   type AudioBlob,
@@ -326,5 +327,51 @@ describe('deleteDeck', () => {
     await deleteDeck('d1')
 
     expect((await db.cards.get('c3'))!.deletedAt).toBe(0)
+  })
+})
+
+describe('insertCardsInChunks', () => {
+  it('grava todos os cartões, mesmo espalhados em vários lotes', async () => {
+    const cards = Array.from({ length: 450 }, (_, i) => makeCard({ id: `c${i}` }))
+
+    await insertCardsInChunks(cards)
+
+    expect(await db.cards.count()).toBe(450)
+  })
+
+  it('reporta o progresso a cada lote, terminando no total exato', async () => {
+    const cards = Array.from({ length: 450 }, (_, i) => makeCard({ id: `c${i}` }))
+    const done: number[] = []
+
+    await insertCardsInChunks(cards, (d) => done.push(d))
+
+    expect(done).toEqual([200, 400, 450])
+  })
+
+  it('não chama onProgress quando não há cartão nenhum', async () => {
+    const done: number[] = []
+
+    await insertCardsInChunks([], (d) => done.push(d))
+
+    expect(done).toEqual([])
+  })
+
+  it('desfaz os lotes já gravados quando um lote falhar', async () => {
+    const cards = Array.from({ length: 450 }, (_, i) => makeCard({ id: `c${i}` }))
+    const originalBulkAdd = db.cards.bulkAdd.bind(db.cards)
+    const bulkAdd = vi.spyOn(db.cards, 'bulkAdd')
+    bulkAdd.mockImplementationOnce((chunk) => originalBulkAdd(chunk as Card[]))
+    bulkAdd.mockRejectedValueOnce(new Error('quota excedida'))
+
+    await expect(insertCardsInChunks(cards)).rejects.toThrow('quota excedida')
+
+    expect(await db.cards.count()).toBe(0)
+  })
+
+  it('propaga a falha do lote para quem chamou', async () => {
+    const cards = Array.from({ length: 10 }, (_, i) => makeCard({ id: `c${i}` }))
+    vi.spyOn(db.cards, 'bulkAdd').mockRejectedValueOnce(new Error('IndexedDB indisponível'))
+
+    await expect(insertCardsInChunks(cards)).rejects.toThrow('IndexedDB indisponível')
   })
 })

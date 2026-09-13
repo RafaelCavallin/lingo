@@ -4,6 +4,7 @@ import { db, type Deck } from '../services/db'
 import { computeStats, paceAdvice, type Stats } from '../services/stats'
 import { Heatmap } from '../components/Heatmap'
 import { MobileNav } from '../components/MobileNav'
+import { ProgressSkeleton } from '../components/ProgressSkeleton'
 
 export function Progress({ deck, onBack }: { deck: Deck; onBack: () => void }) {
   const [stats, setStats] = useState<Stats | null>(null)
@@ -18,13 +19,7 @@ export function Progress({ deck, onBack }: { deck: Deck; onBack: () => void }) {
     await db.decks.update(deck.id, { ...next, updatedAt: Date.now() })
   }
 
-  if (!stats) {
-    return (
-      <Frame onBack={onBack}>
-        <p className="text-muted">Somando as revisões…</p>
-      </Frame>
-    )
-  }
+  if (!stats) return <ProgressSkeleton onBack={onBack} />
 
   const noData = stats.reviewsTotal === 0
 

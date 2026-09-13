@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { db, type Deck } from '../services/db'
+import { errorMessageOf } from '../components/asyncAction'
+import { insertCardsInChunks, type Deck } from '../services/db'
 import { newCard } from '../services/scheduler'
 import type { AnkiDeckFile, AnkiNote } from '../services/ankiImport'
 import { activeVoice, setVoice, speech } from '../services/audio'
@@ -7,6 +8,7 @@ import { useDeck } from '../contexts/DeckContext'
 import { AnkiNotePicker } from '../components/AnkiNotePicker'
 import { ImportTarget } from '../components/ImportTarget'
 import { MobileNav } from '../components/MobileNav'
+import { ProgressBar } from '../components/ProgressBar'
 
 type Stage =
   | { name: 'pick' }
@@ -47,19 +49,31 @@ export function Import({ onBack }: { onBack: () => void }) {
       setSelected(new Set())
       setStage({ name: 'map', file: parsed, front: 0, back: Math.min(1, parsed.fieldNames.length - 1) })
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Não foi possível ler o arquivo.')
+      setError(errorMessageOf(e, 'Não foi possível ler o arquivo.'))
       setStage({ name: 'pick' })
     }
   }
 
-  async function run(target: Deck, notes: AnkiNote[], front: number, back: number) {
+  async function run(target: Deck, previous: Stage & { name: 'target' }) {
+    const { notes, front, back } = previous
     const usable = notes.filter((n) => n.fields[front]?.trim())
     setStage({ name: 'importing', total: usable.length, done: 0, phase: 'cards' })
 
     const cards = usable.map((n) =>
       newCard(target.id, n.fields[front], n.fields[back] ?? '', []),
     )
-    await db.cards.bulkAdd(cards)
+    try {
+      await insertCardsInChunks(cards, (done) =>
+        setStage({ name: 'importing', total: cards.length, done, phase: 'cards' }),
+      )
+    } catch (e) {
+      // Volta para o mesmo estágio de escolha do destino: os lotes já
+      // gravados foram desfeitos por `insertCardsInChunks`, então tentar de
+      // novo com o mesmo destino não duplica nada.
+      setError(errorMessageOf(e, 'Não foi possível criar os cartões.'))
+      setStage(previous)
+      return
+    }
 
     // O áudio é gerado em lote, com concorrência limitada. Se falhar, o cartão
     // entra mesmo assim e a narração sai na primeira revisão.
@@ -117,7 +131,14 @@ export function Import({ onBack }: { onBack: () => void }) {
           </label>
         )}
 
-        {stage.name === 'reading' && <p className="mt-8 text-muted">Lendo o arquivo…</p>}
+        {stage.name === 'reading' && (
+          <div className="mt-8">
+            <p role="status" aria-live="polite" className="text-muted">
+              Lendo o arquivo…
+            </p>
+            <ProgressBar label="Lendo o arquivo…" done={null} total={null} className="mt-4" />
+          </div>
+        )}
 
         {stage.name === 'map' && (
           <div className="mt-8">
@@ -208,24 +229,16 @@ export function Import({ onBack }: { onBack: () => void }) {
                   : { name: 'map', ...previous },
               )
             }}
-            onConfirm={(target) => run(target, stage.notes, stage.front, stage.back)}
+            onConfirm={(target) => run(target, stage)}
           />
         )}
 
         {stage.name === 'importing' && (
           <div className="mt-10">
-            <p className="text-muted">
-              {stage.phase === 'cards' ? 'Criando os cartões…' : 'Gerando a narração…'}
+            <p role="status" aria-live="polite" className="text-muted">
+              {phaseLabel(stage.phase)}
             </p>
-            <div className="mt-4 h-[3px] w-full bg-line">
-              <div
-                className="h-full bg-signal transition-all"
-                style={{ width: `${stage.total ? (stage.done / stage.total) * 100 : 0}%` }}
-              />
-            </div>
-            <p className="mt-2 font-mono text-xs tabular-nums text-muted">
-              {stage.done} / {stage.total}
-            </p>
+            <ProgressBar label={phaseLabel(stage.phase)} done={stage.done} total={stage.total} className="mt-4" />
           </div>
         )}
 
@@ -248,6 +261,10 @@ export function Import({ onBack }: { onBack: () => void }) {
       </main>
     </div>
   )
+}
+
+function phaseLabel(phase: 'cards' | 'audio'): string {
+  return phase === 'cards' ? 'Criando os cartões…' : 'Gerando a narração…'
 }
 
 function FieldPicker({

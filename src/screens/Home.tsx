@@ -1,15 +1,25 @@
 import { useEffect, useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
+import type { Session } from '@supabase/supabase-js'
 import { db, liveCards, type Deck } from '../services/db'
 import { buildQueue, estimateMinutes } from '../services/scheduler'
-import { Heatmap, iso } from '../components/Heatmap'
+import { iso } from '../components/Heatmap'
 import { speech } from '../services/audio'
+import { AsyncRegion } from '../components/AsyncRegion'
 import { DeckSwitcher } from '../components/DeckSwitcher'
 import { DueBadge } from '../components/DueBadge'
 import { useDueTick, useTotalDueCount } from '../components/useDueTick'
+import { useLastDefined } from '../components/useLastDefined'
+import { usePendingIndicator } from '../components/usePendingIndicator'
 import { MobileNav } from '../components/MobileNav'
+import { HomeSkeleton } from '../components/HomeSkeleton'
+import { HomeToday } from '../components/HomeToday'
+import { HomeOnboarding } from '../components/HomeOnboarding'
+import { Skeleton } from '../components/Skeleton'
+import { homeView } from '../components/homeSummary'
 import { useAuth } from '../contexts/AuthContext'
 import { displayName } from '../services/auth'
+import type { SessionPhase } from '../services/sessionPhase'
 
 /** Só os primeiros cartões: a home não deve puxar a fila inteira da rede. */
 const WARM_ON_HOME = 2
@@ -33,7 +43,7 @@ export function Home({
   onCards: () => void
   onAccount: () => void
 }) {
-  const { configured: syncConfigured, session } = useAuth()
+  const { configured: syncConfigured, phase: authPhase, session } = useAuth()
   const [queueSize, setQueueSize] = useState<number | null>(null)
   const [minutes, setMinutes] = useState(0)
   const [switcherOpen, setSwitcherOpen] = useState(false)
@@ -44,15 +54,20 @@ export function Home({
   // Um cartão só precisa ser aquecido uma vez; sem isto o relógio reenviaria
   // o mesmo áudio para o /api/tts a cada meio minuto.
   const warmed = useRef(new Set<string>())
+  const lastDeckId = useRef(deck.id)
 
-  const total = useLiveQuery(() => liveCards(deck.id).count(), [deck.id])
-  const reviewedToday = useLiveQuery(() => {
+  const totalRaw = useLiveQuery(() => liveCards(deck.id).count(), [deck.id])
+  // Chaveado pelo baralho: sem isto, trocar para um baralho vazio mostraria
+  // por um instante a contagem do baralho anterior, em vez do skeleton.
+  const { value: total } = useLastDefined(totalRaw, deck.id)
+  const reviewedTodayRaw = useLiveQuery(() => {
     const start = new Date()
     start.setHours(0, 0, 0, 0)
     return db.reviewLogs.where('reviewedAt').above(start.getTime()).count()
   }, [])
+  const { value: reviewedToday } = useLastDefined(reviewedTodayRaw)
 
-  const byDay = useLiveQuery(async () => {
+  const byDayRaw = useLiveQuery(async () => {
     const logs = await db.reviewLogs.toArray()
     const map = new Map<string, number>()
     for (const l of logs) {
@@ -60,9 +75,17 @@ export function Home({
       map.set(k, (map.get(k) ?? 0) + 1)
     }
     return map
-  }, [reviewedToday])
+  }, [reviewedTodayRaw])
+  const { value: byDay, firstLoad: byDayLoading } = useLastDefined(byDayRaw)
 
   useEffect(() => {
+    // Só reseta o número ao trocar de baralho de verdade — nas outras
+    // dependências (revisão feita, tick de 30s) ele fica parado no valor
+    // anterior até o novo chegar, para não piscar a cada recontagem.
+    if (lastDeckId.current !== deck.id) {
+      lastDeckId.current = deck.id
+      setQueueSize(null)
+    }
     void buildQueue(deck).then(async (q) => {
       setQueueSize(q.length)
       // Baixa o áudio das primeiras frases enquanto o usuário ainda está na
@@ -74,10 +97,12 @@ export function Home({
       }
       setMinutes(await estimateMinutes(q.length))
     })
-  }, [deck, reviewedToday, total, tick])
+  }, [deck, reviewedTodayRaw, totalRaw, tick])
 
-  const empty = (total ?? 0) === 0
-  const hasHistory = (byDay?.size ?? 0) > 0
+  const view = homeView({ total, queueSize, minutes })
+  // Sem a antipiscada, o primeiro frame antes da leitura do Dexie resolver
+  // mostraria o skeleton por um instante mesmo em leituras rapidíssimas.
+  const showLoading = usePendingIndicator(view.kind === 'loading')
 
   return (
     <div className="mx-auto flex min-h-dvh max-w-2xl flex-col px-5 pb-[calc(2.5rem+env(safe-area-inset-bottom))] pt-8">
@@ -91,31 +116,14 @@ export function Home({
           >
             <DueBadge
               count={totalDue}
-              label={`${totalDue} para revisar em todos os baralhos`}
+              label={`${totalDue ?? 0} para revisar em todos os baralhos`}
               className="-translate-y-1"
             />
             <span className="truncate">{deck.name} ▾</span>
           </button>
           {/* O login vivia escondido dentro de Ajustes; aqui ele fica a um toque
               em qualquer sessão, sem competir com o botão de estudar. */}
-          {syncConfigured &&
-            (session ? (
-              <button
-                onClick={onAccount}
-                title={session.user.email}
-                aria-label={`Conta de ${session.user.email}`}
-                className="shrink-0 truncate font-mono text-xs text-muted transition hover:text-signal"
-              >
-                {displayName(session.user)}
-              </button>
-            ) : (
-              <button
-                onClick={onAccount}
-                className="shrink-0 rounded-full border border-line px-3 py-1.5 font-mono text-xs uppercase tracking-wider text-muted transition hover:border-signal hover:text-signal"
-              >
-                Entrar
-              </button>
-            ))}
+          {syncConfigured && <AccountControl phase={authPhase} session={session} onAccount={onAccount} />}
         </div>
         <MobileNav />
       </header>
@@ -123,59 +131,19 @@ export function Home({
       {switcherOpen && <DeckSwitcher onClose={() => setSwitcherOpen(false)} />}
 
       <main className="flex flex-1 flex-col justify-center py-14">
-        {empty ? (
-          <>
-            <h2 className="font-display text-4xl leading-tight sm:text-5xl">
-              Comece colando uma frase que você quer nunca mais esquecer.
-            </h2>
-            <p className="mt-4 max-w-md text-muted">
-              Cada frase vira um cartão narrado em inglês americano. Você revisa quando estiver prestes a esquecer.
-            </p>
-            <div className="mt-10 flex flex-wrap items-center gap-4">
-              <button
-                onClick={onAdd}
-                className="rounded-full bg-signal px-7 py-3.5 font-medium text-ink transition hover:brightness-110"
-              >
-                Adicionar primeira frase
-              </button>
-              <button onClick={onImport} className="font-mono text-xs uppercase tracking-wider text-muted hover:text-signal">
-                ou importar do Anki
-              </button>
-            </div>
-          </>
-        ) : (
-          <>
-            <p className="font-mono text-xs uppercase tracking-[0.25em] text-signal">Hoje</p>
-            <p className="mt-5 font-display text-7xl leading-none tabular-nums sm:text-8xl">
-              {queueSize ?? '—'}
-            </p>
-            <p className="mt-3 text-lg text-muted">
-              {queueSize === 1 ? 'frase para revisar' : 'frases para revisar'}
-              {queueSize ? ` · cerca de ${minutes} min` : ''}
-            </p>
-
-            <button
-              onClick={onStudy}
-              disabled={!queueSize}
-              className="mt-10 self-start rounded-full bg-signal px-8 py-4 text-lg font-medium text-ink transition hover:brightness-110 disabled:cursor-not-allowed disabled:bg-surface disabled:text-muted"
-            >
-              {queueSize ? 'Estudar' : 'Nada vencido agora'}
-            </button>
-
-            {hasHistory && byDay && (
-              <button
-                onClick={onProgress}
-                aria-label="Ver progresso"
-                className="mt-14 rounded-xl border border-transparent p-2 text-left transition hover:border-line"
-              >
-                <Heatmap counts={byDay} />
-                <span className="mt-2 block font-mono text-[10px] uppercase tracking-wider text-muted">
-                  Ver progresso →
-                </span>
-              </button>
-            )}
-          </>
-        )}
+        <AsyncRegion loading={showLoading} label="Carregando seus cartões…" skeleton={<HomeSkeleton />}>
+          {view.kind === 'onboarding' && <HomeOnboarding onAdd={onAdd} onImport={onImport} />}
+          {view.kind === 'today' && (
+            <HomeToday
+              queueSize={view.queueSize}
+              minutes={view.minutes}
+              onStudy={onStudy}
+              byDay={byDay}
+              byDayLoading={byDayLoading}
+              onProgress={onProgress}
+            />
+          )}
+        </AsyncRegion>
       </main>
 
       {/* Os seis atalhos em linha só cabem a partir de md; abaixo disso quem
@@ -188,9 +156,13 @@ export function Home({
           <FooterLink onClick={onProgress}>Progresso</FooterLink>
           <FooterLink onClick={onSettings}>Ajustes</FooterLink>
         </nav>
-        <span className="whitespace-nowrap">
-          {total ?? 0} cartões · {reviewedToday ?? 0} hoje
-        </span>
+        {total === undefined ? (
+          <Skeleton shape="text" width="7rem" height="1rem" />
+        ) : (
+          <span className="whitespace-nowrap">
+            {total} cartões · {reviewedToday ?? 0} hoje
+          </span>
+        )}
       </footer>
     </div>
   )
@@ -200,6 +172,40 @@ function FooterLink({ onClick, children }: { onClick: () => void; children: stri
   return (
     <button onClick={onClick} className="whitespace-nowrap text-left transition hover:text-signal">
       {children}
+    </button>
+  )
+}
+
+/** Nunca mostra "Entrar" para quem já está logado: `phase === 'restoring'`
+ *  cobre exatamente a janela em que a sessão ainda está voltando. */
+function AccountControl({
+  phase,
+  session,
+  onAccount,
+}: {
+  phase: SessionPhase
+  session: Session | null
+  onAccount: () => void
+}) {
+  if (phase === 'restoring') return <Skeleton shape="pill" width="4.5rem" height="1.5rem" />
+  if (session) {
+    return (
+      <button
+        onClick={onAccount}
+        title={session.user.email}
+        aria-label={`Conta de ${session.user.email}`}
+        className="shrink-0 truncate font-mono text-xs text-muted transition hover:text-signal"
+      >
+        {displayName(session.user)}
+      </button>
+    )
+  }
+  return (
+    <button
+      onClick={onAccount}
+      className="shrink-0 rounded-full border border-line px-3 py-1.5 font-mono text-xs uppercase tracking-wider text-muted transition hover:border-signal hover:text-signal"
+    >
+      Entrar
     </button>
   )
 }

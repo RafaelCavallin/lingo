@@ -2,35 +2,42 @@ import { useEffect, useState } from 'react'
 import { estimateBackupSize, type BackupSizeEstimate } from '../services/backupRecords'
 import { useNavigation } from '../contexts/NavigationContext'
 import { formatBytes } from './formatBytes'
-import { Message, Section, Toggle } from './SettingsControls'
-
-type State = { busy: boolean; message: string | null; tone: 'ok' | 'bad' | null }
-
-const IDLE: State = { busy: false, message: null, tone: null }
+import { ProgressBar } from './ProgressBar'
+import { Skeleton } from './Skeleton'
+import { Section, Toggle } from './SettingsControls'
+import { useAsyncAction } from './useAsyncAction'
 
 export function BackupSection() {
   const { navigate } = useNavigation()
   const [withNarrations, setWithNarrations] = useState(false)
   const [estimate, setEstimate] = useState<BackupSizeEstimate | null>(null)
-  const [state, setState] = useState<State>(IDLE)
+  const [zipPct, setZipPct] = useState<number | null>(null)
+  const [downloaded, setDownloaded] = useState(false)
 
   useEffect(() => {
-    void estimateBackupSize().then(setEstimate)
+    let cancelled = false
+    void estimateBackupSize().then((e) => {
+      if (!cancelled) setEstimate(e)
+    })
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   const base = estimate ? estimate.data + estimate.recordings : 0
   const total = estimate ? base + (withNarrations ? estimate.narrations : 0) : 0
 
-  async function generate() {
-    setState({ busy: true, message: null, tone: null })
+  const backupAction = useAsyncAction(async () => {
+    setDownloaded(false)
+    setZipPct(0)
     try {
       const { downloadBackup } = await import('../services/backupExport')
-      await downloadBackup({ includeNarrations: withNarrations })
-      setState({ busy: false, message: 'Backup baixado.', tone: 'ok' })
-    } catch {
-      setState({ busy: false, message: 'Não foi possível gerar o backup.', tone: 'bad' })
+      await downloadBackup({ includeNarrations: withNarrations, onProgress: setZipPct })
+      setDownloaded(true)
+    } finally {
+      setZipPct(null)
     }
-  }
+  })
 
   return (
     <Section title="Backup e restauração">
@@ -44,22 +51,31 @@ export function BackupSection() {
           checked={withNarrations}
           onChange={setWithNarrations}
           hint={
-            estimate
-              ? `Deixa o arquivo maior (+${formatBytes(estimate.narrations)}), e evita gerar o áudio de novo depois de restaurar.`
-              : 'Deixa o arquivo maior, e evita gerar o áudio de novo depois de restaurar.'
+            <>
+              Deixa o arquivo maior{' '}
+              {estimate ? (
+                `(+${formatBytes(estimate.narrations)})`
+              ) : (
+                <Skeleton shape="text" width="3.5rem" height="0.875rem" className="inline-block" />
+              )}
+              , e evita gerar o áudio de novo depois de restaurar.
+            </>
           }
         />
       </div>
-      <p className="mt-4 font-mono text-xs text-muted">
-        {estimate ? `arquivo estimado: ${formatBytes(total)}` : 'calculando o tamanho…'}
-      </p>
+      {estimate ? (
+        <p className="mt-4 font-mono text-xs text-muted">arquivo estimado: {formatBytes(total)}</p>
+      ) : (
+        <Skeleton shape="text" width="10rem" height="0.75rem" className="mt-4" />
+      )}
       <div className="mt-4 flex flex-wrap items-center gap-4">
         <button
-          onClick={() => void generate()}
-          disabled={state.busy}
+          onClick={() => void backupAction.run()}
+          disabled={backupAction.busy}
+          aria-busy={backupAction.busy}
           className="rounded-full bg-signal px-5 py-2.5 text-sm font-medium text-ink transition hover:brightness-110 disabled:bg-surface disabled:text-muted"
         >
-          {state.busy ? 'Gerando…' : 'Baixar backup'}
+          {backupAction.busy ? 'Gerando…' : 'Baixar backup'}
         </button>
         <button
           onClick={() => navigate('restore')}
@@ -68,7 +84,13 @@ export function BackupSection() {
           Restaurar um backup
         </button>
       </div>
-      <Message state={state} />
+      {backupAction.busy && (
+        <div className="mt-3 max-w-xs">
+          <ProgressBar label="Gerando o backup…" done={zipPct} total={zipPct === null ? null : 100} />
+        </div>
+      )}
+      {backupAction.error && <p className="mt-3 text-sm text-miss">{backupAction.error}</p>}
+      {!backupAction.error && downloaded && <p className="mt-3 text-sm text-hit">Backup baixado.</p>}
     </Section>
   )
 }

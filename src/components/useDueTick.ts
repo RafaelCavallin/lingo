@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useDeck } from '../contexts/DeckContext'
 import { totalQueueCount } from '../services/scheduler'
+import { useLastDefined } from './useLastDefined'
 
 /** Passo do relógio: abaixo do menor intervalo de aprendizado do FSRS. */
 const TICK_MS = 30_000
@@ -41,10 +42,14 @@ export function useDueTick(): number {
   return tick
 }
 
-/** Fila somada de todos os baralhos — o total pendente da conta, não só o do ativo. */
-export function useTotalDueCount(): number {
+/**
+ * Fila somada de todos os baralhos — o total pendente da conta, não só o do
+ * ativo. `undefined` só antes da primeira leitura: o tick de 30s refaz a
+ * contagem, e sem `useLastDefined` o badge voltaria a piscar a cada refetch.
+ */
+export function useTotalDueCount(): number | undefined {
   const { decks } = useDeck()
   const tick = useDueTick()
   const count = useLiveQuery(() => totalQueueCount(decks), [decks, tick])
-  return count ?? 0
+  return useLastDefined(count).value
 }

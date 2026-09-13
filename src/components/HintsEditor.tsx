@@ -1,4 +1,5 @@
 import { type Hint, type HintType } from '../services/db'
+import { SkeletonLines } from './Skeleton'
 
 const HINT_TYPES: { value: HintType; label: string }[] = [
   { value: 'phrasal_verb', label: 'Phrasal verb' },
@@ -11,9 +12,13 @@ const HINT_TYPES: { value: HintType; label: string }[] = [
 export function HintsEditor({
   hints,
   onChange,
+  loading = false,
 }: {
   hints: Hint[]
   onChange: (hints: Hint[]) => void
+  /** Geração em voo e a lista ainda vazia — mostra o formato final em vez do
+   *  aviso de "nenhuma dica ainda", que salta de ~20px para ~180px de uma vez. */
+  loading?: boolean
 }) {
   function update(index: number, changes: Partial<Hint>) {
     onChange(hints.map((h, i) => (i === index ? { ...h, ...changes, source: 'user' } : h)))
@@ -31,11 +36,17 @@ export function HintsEditor({
         </button>
       </div>
 
-      {hints.length === 0 ? (
+      {hints.length === 0 && loading && (
+        <div className="mt-3">
+          <SkeletonLines lines={2} lineHeight="2.25rem" gap="0.75rem" />
+        </div>
+      )}
+      {hints.length === 0 && !loading && (
         <p className="mt-3 text-sm text-muted/70">
           Nenhuma dica ainda. Elas chegam com a geração, e você ajusta ou escreve as suas.
         </p>
-      ) : (
+      )}
+      {hints.length > 0 && (
         <ul className="mt-3 space-y-3">
           {hints.map((h, i) => (
             <li key={i} className="flex gap-2">
@@ -70,3 +81,4 @@ export function HintsEditor({
     </>
   )
 }
+

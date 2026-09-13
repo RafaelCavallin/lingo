@@ -255,6 +255,34 @@ export function liveCards(deckId: string) {
   return db.cards.where('[deckId+deletedAt]').equals([deckId, 0])
 }
 
+const INSERT_CHUNK_SIZE = 200
+
+/**
+ * Insere em lotes, não num único `bulkAdd` — usado pela importação do Anki,
+ * onde `onProgress` é o que faz a barra da fase "criando os cartões" sair de
+ * 0%. Um `bulkAdd` só resolveria (e só emitiria) quando os milhares de
+ * cartões já estivessem todos gravados.
+ *
+ * Cada lote é a sua própria transação, então uma falha no meio (colisão de
+ * chave, quota, IndexedDB) deixaria os lotes anteriores gravados pela metade.
+ * O `catch` desfaz o que já entrou antes de repropagar, para a importação
+ * continuar tudo-ou-nada apesar do chunking.
+ */
+export async function insertCardsInChunks(cards: Card[], onProgress?: (done: number) => void): Promise<void> {
+  const insertedIds: string[] = []
+  try {
+    for (let i = 0; i < cards.length; i += INSERT_CHUNK_SIZE) {
+      const chunk = cards.slice(i, i + INSERT_CHUNK_SIZE)
+      await db.cards.bulkAdd(chunk)
+      insertedIds.push(...chunk.map((c) => c.id))
+      onProgress?.(Math.min(i + INSERT_CHUNK_SIZE, cards.length))
+    }
+  } catch (e) {
+    if (insertedIds.length > 0) await db.cards.bulkDelete(insertedIds)
+    throw e
+  }
+}
+
 /**
  * Excluir é uma edição comum, não uma operação especial: `deletedAt` sobe
  * junto com `updatedAt` e percorre o mesmo caminho de last-write-wins do

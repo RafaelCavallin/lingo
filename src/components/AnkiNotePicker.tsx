@@ -178,9 +178,12 @@ export function AnkiNotePicker({
             </label>
           </li>
         ))}
+        {/* Não é espera de verdade: `setVisibleCount` é síncrono, então isto
+            é só o marcador que o IntersectionObserver observa para revelar
+            mais linhas — sem afirmar um carregamento que não acontece. */}
         {hasMore && (
-          <li ref={sentinelRef} aria-hidden className="py-4 text-center text-xs text-muted">
-            Carregando mais…
+          <li ref={sentinelRef} aria-hidden className="py-4 text-center text-xs text-muted/40">
+            ···
           </li>
         )}
       </ul>

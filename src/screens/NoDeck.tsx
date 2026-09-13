@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { Deck } from '../services/db'
 import { shouldReturnHome } from '../services/navigationPolicy'
+import { useAsyncAction } from '../components/useAsyncAction'
 
 interface NoDeckProps {
   createDeck: (name: string) => Promise<Deck>
@@ -15,20 +16,17 @@ interface NoDeckProps {
  */
 export function NoDeck({ createDeck, onDeckCreated }: NoDeckProps) {
   const [name, setName] = useState('')
-  const [error, setError] = useState<string | null>(null)
 
-  const handleCreate = async () => {
+  const action = useAsyncAction(async () => {
     const trimmed = name.trim()
     if (!trimmed) return
-    setError(null)
     try {
       await createDeck(name)
     } catch {
-      setError('Não foi possível criar o baralho. Tente de novo.')
-      return
+      throw new Error('Não foi possível criar o baralho. Tente de novo.')
     }
     if (shouldReturnHome({ kind: 'deck-created' })) onDeckCreated()
-  }
+  })
 
   return (
     <div className="mx-auto flex min-h-dvh max-w-md flex-col items-start justify-center px-5">
@@ -39,18 +37,21 @@ export function NoDeck({ createDeck, onDeckCreated }: NoDeckProps) {
           autoFocus
           value={name}
           onChange={(e) => setName(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && void handleCreate()}
+          onKeyDown={(e) => e.key === 'Enter' && void action.run()}
+          disabled={action.busy}
           placeholder="Nome do baralho"
-          className="min-w-0 flex-1 rounded-xl border border-line bg-surface px-4 py-3 text-sm outline-none focus:border-signal"
+          className="min-w-0 flex-1 rounded-xl border border-line bg-surface px-4 py-3 text-sm outline-none focus:border-signal disabled:opacity-60"
         />
         <button
-          onClick={() => void handleCreate()}
-          className="shrink-0 rounded-xl bg-signal px-5 py-3 font-medium text-ink transition hover:brightness-110"
+          onClick={() => void action.run()}
+          disabled={action.busy}
+          aria-busy={action.busy}
+          className="shrink-0 rounded-xl bg-signal px-5 py-3 font-medium text-ink transition hover:brightness-110 disabled:opacity-60"
         >
-          Criar
+          {action.busy ? 'Criando…' : 'Criar'}
         </button>
       </div>
-      {error && <p className="mt-3 text-sm text-miss">{error}</p>}
+      {action.error && <p className="mt-3 text-sm text-miss">{action.error}</p>}
     </div>
   )
 }

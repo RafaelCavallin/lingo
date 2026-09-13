@@ -1,9 +1,13 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useLayoutEffect, useMemo, useRef } from 'react'
 
 const CELL = 11
 const GAP = 3
 const WEEKS = 40
 const MONTHS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
+
+/** Altura real do SVG — usada por quem precisa reservar o espaço do heatmap
+ *  antes dos dados chegarem (ver HomeSkeleton). */
+export const HEATMAP_HEIGHT = 7 * (CELL + GAP) + 16
 
 /**
  * Constância dos últimos 10 meses. Sem lib de gráfico: é uma grade de retângulos,
@@ -14,11 +18,13 @@ export function Heatmap({ counts }: { counts: Map<string, number> }) {
   const scrollRef = useRef<HTMLElement>(null)
 
   const width = WEEKS * (CELL + GAP)
-  const height = 7 * (CELL + GAP) + 16
+  const height = HEATMAP_HEIGHT
 
   // Em telas estreitas a grade não cabe inteira: começa mostrando o mês
-  // atual (a ponta mais recente), não os meses mais antigos.
-  useEffect(() => {
+  // atual (a ponta mais recente), não os meses mais antigos. `useLayoutEffect`
+  // aplica isso antes do paint — com `useEffect` dava para ver a grade
+  // começar nos meses antigos e saltar para a direita.
+  useLayoutEffect(() => {
     const el = scrollRef.current
     if (el) el.scrollLeft = el.scrollWidth
   }, [width])

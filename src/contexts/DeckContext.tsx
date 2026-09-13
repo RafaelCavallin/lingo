@@ -11,6 +11,7 @@ import {
 } from '../services/db'
 import { setSpeechRate, setVoice } from '../services/audio'
 import { applyFsrsParameters } from '../services/scheduler'
+import { AppBootSkeleton } from '../components/AppBootSkeleton'
 
 const ACTIVE_DECK_KEY = 'lingo.activeDeckId'
 
@@ -134,7 +135,9 @@ export function DeckProvider({ children }: { children: ReactNode }) {
     [decks],
   )
 
-  if (!seeded || !decks) return null
+  // Tela inicial é sempre a Home — mostrar a moldura dela em vez de branco faz
+  // a transição boot→Home não deslocar um pixel (ver AppBootSkeleton).
+  if (!seeded || !decks) return <AppBootSkeleton />
 
   return (
     <DeckContext.Provider value={{ deck, decks, switchDeck, createDeck, renameDeck, removeDeck }}>

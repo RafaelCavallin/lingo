@@ -72,8 +72,11 @@ export async function readBackup(file: Blob): Promise<BackupPreview> {
 export async function restoreBackup(input: RestoreInput): Promise<RestoreReport> {
   const { manifest, zip } = input.preview.source
   const records = manifest.decks.length + manifest.cards.length + manifest.reviewLogs.length
+  // `applyRecords` é uma transação única — não há progresso real dentro dela.
+  // Emitir antes, com o total conhecido, é o que permite à UI mostrar "N
+  // registros" em vez de uma barra que pula de 0% a 100%.
+  input.onProgress?.({ phase: 'data', done: 0, total: records })
   const applied = await applyRecords(manifest, input.plan)
-  input.onProgress?.({ phase: 'data', done: records, total: records })
   const audio = await restoreAudio({
     zip,
     entries: manifest.audio,

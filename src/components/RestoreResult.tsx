@@ -1,8 +1,9 @@
 import type { RestoreReport } from '../services/backupRestore'
+import { nothingApplied } from './restoreResult'
 
 export function RestoreResult({ report, onBack }: { report: RestoreReport; onBack: () => void }) {
   const { applied } = report
-  const nadaAplicado = applied.decks + applied.cards + applied.reviewLogs === 0
+  const nadaAplicado = nothingApplied(applied)
   return (
     <div role="status">
       <h1 className="font-display text-3xl text-hit">Backup restaurado</h1>

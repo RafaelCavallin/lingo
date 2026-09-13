@@ -21,7 +21,20 @@ export default defineConfig({
       provider: 'v8',
       // A camada de UI (screens/components React, contexts) fica fora do gate:
       // ela é validada por e2e no Playwright, não por cobertura de unidade.
-      include: ['src/services/**/*.ts', 'src/components/textMarks.ts', 'src/components/restoreConfirm.ts'],
+      include: [
+        'src/services/**/*.ts',
+        'src/components/textMarks.ts',
+        'src/components/restoreConfirm.ts',
+        'src/components/skeleton.ts',
+        'src/components/progressBar.ts',
+        'src/components/pendingIndicator.ts',
+        'src/components/asyncAction.ts',
+        'src/components/lastDefined.ts',
+        'src/components/homeSummary.ts',
+        'src/components/dueBadge.ts',
+        'src/components/restoreResult.ts',
+        'src/components/formatBytes.ts',
+      ],
       exclude: ['**/*.test.ts'],
       thresholds: { statements: 80, branches: 80, functions: 80, lines: 80 },
       reporter: ['text', 'html'],

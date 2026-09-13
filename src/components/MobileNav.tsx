@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { displayName } from '../services/auth'
 import { DeckSwitcher } from './DeckSwitcher'
 import { DueBadge } from './DueBadge'
+import { Skeleton } from './Skeleton'
 import { useTotalDueCount } from './useDueTick'
 
 const ITEMS: { screen: Screen; label: string }[] = [
@@ -24,7 +25,7 @@ const ITEMS: { screen: Screen; label: string }[] = [
 export function MobileNav() {
   const { screen, navigate } = useNavigation()
   const { deck } = useDeck()
-  const { configured: syncConfigured, session } = useAuth()
+  const { configured: syncConfigured, session, phase: authPhase } = useAuth()
   const totalDue = useTotalDueCount()
   const [open, setOpen] = useState(false)
   const [switcherOpen, setSwitcherOpen] = useState(false)
@@ -82,7 +83,7 @@ export function MobileNav() {
           <path d="M3 5h14M3 10h14M3 15h14" />
         </svg>
         {/* Ponto em vez de número: no ☰ não cabe contagem, e o menu logo abre. */}
-        {totalDue > 0 && (
+        {!!totalDue && totalDue > 0 && (
           <span aria-hidden="true" className="absolute right-1 top-1 h-2 w-2 rounded-full bg-signal" />
         )}
       </button>
@@ -145,7 +146,12 @@ export function MobileNav() {
                   </span>
                 </button>
               )}
-              {syncConfigured && (
+              {syncConfigured && authPhase === 'restoring' && (
+                <div className="px-2 py-3">
+                  <Skeleton shape="pill" width="4.5rem" height="1.5rem" />
+                </div>
+              )}
+              {syncConfigured && authPhase !== 'restoring' && (
                 <button
                   onClick={() => go('account')}
                   className="w-full truncate rounded-xl px-2 py-3 text-left font-mono text-xs text-muted transition hover:bg-line/40 hover:text-signal"

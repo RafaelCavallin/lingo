@@ -6,9 +6,13 @@ import { BACKUP_FORMAT, BACKUP_VERSION, MANIFEST_PATH, type BackupManifest } fro
 
 export interface BackupOptions {
   includeNarrations: boolean
+  /** Percentual (0–100) da compressão do ZIP — a única etapa aqui que o
+   *  JSZip sabe medir; coletar os registros e ler os blobs de áudio não tem
+   *  progresso granular. */
+  onProgress?: (percent: number) => void
 }
 
-export async function createBackup({ includeNarrations }: BackupOptions): Promise<Blob> {
+export async function createBackup({ includeNarrations, onProgress }: BackupOptions): Promise<Blob> {
   const records = await collectRecords()
   const audio = await selectAudio(records.cards, includeNarrations)
   const manifest: BackupManifest = {
@@ -25,7 +29,7 @@ export async function createBackup({ includeNarrations }: BackupOptions): Promis
   for (const { entry, blob } of audio) {
     zip.file(entry.path, new Uint8Array(await blob.arrayBuffer()), { compression: 'STORE' })
   }
-  return zip.generateAsync({ type: 'blob' })
+  return zip.generateAsync({ type: 'blob' }, (meta) => onProgress?.(meta.percent))
 }
 
 export async function downloadBackup(options: BackupOptions): Promise<void> {

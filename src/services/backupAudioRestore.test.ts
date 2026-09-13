@@ -168,7 +168,10 @@ describe('restauração do áudio', () => {
       onProgress: (p) => fases.push(`${p.phase}:${p.done}/${p.total}`),
     })
 
-    expect(fases).toEqual(['data:2/2', 'audio:1/2', 'audio:2/2'])
+    // A fase "data" é uma transação única — o evento sai antes de aplicar,
+    // com `done:0`, e é só o gatilho da barra indeterminada na UI (ver
+    // services/restoreProgressView.ts). Só "audio" reporta progresso real.
+    expect(fases).toEqual(['data:0/2', 'audio:1/2', 'audio:2/2'])
   })
 
   it('preserva os dados restaurados quando a gravação do áudio falha por falta de espaço', async () => {

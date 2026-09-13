@@ -74,21 +74,27 @@ async function tombstoneOrphans(content: RestoreContent, now: number): Promise<n
  * homônimo — e, pior, com ele ainda selecionado, dando a impressão de que a
  * restauração não trouxe nada. Mesmo tratamento que a entrada em uma conta dá.
  *
+ * Tombstone, não `bulkDelete`: se este baralho já tiver subido ao servidor
+ * (um sync no boot pode correr antes do usuário abrir a restauração), apagar
+ * sem marcar `dirty` nunca chegaria ao servidor, e o baralho vazio voltaria
+ * no próximo pull — o mesmo baralho homônimo que isto existe para evitar.
+ *
  * Roda dentro da transação da restauração: fora dela, a interface enxerga o
  * instante sem baralho nenhum, cai na tela de "nenhum baralho" e desmonta a
  * própria tela de restauração no meio da operação.
  */
-async function dropUntouchedDefaultDeck(content: RestoreContent): Promise<void> {
+async function dropUntouchedDefaultDeck(content: RestoreContent, now: number): Promise<void> {
   if (content.decks.length === 0) return
   if (!(await isUntouchedDefaultDeck())) return
   const ids = await db.decks.filter((deck) => deck.deletedAt === 0).primaryKeys()
-  await db.decks.bulkDelete(ids.filter((id) => !content.decks.some((deck) => deck.id === id)))
+  const seeded = ids.filter((id) => !content.decks.some((deck) => deck.id === id))
+  await db.decks.where('id').anyOf(seeded).modify({ deletedAt: now, updatedAt: now, dirty: 1 })
 }
 
 export async function applyRecords(content: RestoreContent, plan: RestorePlan): Promise<AppliedRecords> {
   const now = Date.now()
   return db.transaction('rw', db.decks, db.cards, db.reviewLogs, async () => {
-    await dropUntouchedDefaultDeck(content)
+    await dropUntouchedDefaultDeck(content, now)
     const decks = await applyRows(db.decks, pending(content.decks, plan, now), plan)
     const cards = await applyRows(db.cards, pending(content.cards, plan, now), plan)
     const reviewLogs = await addMissingLogs(content.reviewLogs.map((log) => ({ ...log, dirty: 1 })))

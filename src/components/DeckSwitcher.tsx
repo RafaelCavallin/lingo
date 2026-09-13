@@ -3,7 +3,9 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { useDeck } from '../contexts/DeckContext'
 import { queueCount } from '../services/scheduler'
 import { DueBadge } from './DueBadge'
+import { useAsyncAction } from './useAsyncAction'
 import { useDueTick } from './useDueTick'
+import { useLastDefined } from './useLastDefined'
 import type { Deck } from '../services/db'
 
 export function DeckSwitcher({ onClose }: { onClose: () => void }) {
@@ -13,30 +15,39 @@ export function DeckSwitcher({ onClose }: { onClose: () => void }) {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editName, setEditName] = useState('')
 
-  async function submitCreate() {
+  const createAction = useAsyncAction(async () => {
     if (!name.trim()) return
     await createDeck(name)
     setName('')
     setCreating(false)
     onClose()
-  }
+  })
 
-  async function submitRename(id: string) {
+  const renameAction = useAsyncAction(async (id: string) => {
     await renameDeck(id, editName)
     setEditingId(null)
-  }
+  })
 
-  async function remove(d: Deck) {
+  const removeAction = useAsyncAction(async (d: Deck) => {
     if (decks.length <= 1) {
       alert('Não é possível excluir o único baralho. Crie outro antes.')
       return
     }
     if (!confirm(`Excluir o baralho "${d.name}" e todos os seus cartões? Não tem como desfazer.`)) return
     await removeDeck(d.id)
-  }
+  })
+
+  // Uma única lista, então uma ação em voo (criar/renomear/excluir) trava as
+  // outras — evita, por exemplo, excluir um segundo baralho enquanto o
+  // primeiro ainda está sendo removido.
+  const anyBusy = createAction.busy || renameAction.busy || removeAction.busy
 
   return (
     <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="deck-switcher-title"
+      aria-busy={anyBusy}
       className="fixed inset-0 z-50 flex items-start justify-center bg-ink/60 px-5 pt-20"
       onClick={onClose}
     >
@@ -44,7 +55,9 @@ export function DeckSwitcher({ onClose }: { onClose: () => void }) {
         className="w-full max-w-sm rounded-2xl border border-line bg-surface p-4"
         onClick={(e) => e.stopPropagation()}
       >
-        <p className="font-mono text-xs uppercase tracking-wider text-muted">Baralhos</p>
+        <p id="deck-switcher-title" className="font-mono text-xs uppercase tracking-wider text-muted">
+          Baralhos
+        </p>
 
         <ul className="mt-3 space-y-1">
           {decks.map((d) => (
@@ -54,9 +67,10 @@ export function DeckSwitcher({ onClose }: { onClose: () => void }) {
                   autoFocus
                   value={editName}
                   onChange={(e) => setEditName(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && submitRename(d.id)}
-                  onBlur={() => submitRename(d.id)}
-                  className="min-w-0 flex-1 rounded-lg border border-signal bg-transparent px-2 py-1 text-sm outline-none"
+                  onKeyDown={(e) => e.key === 'Enter' && void renameAction.run(d.id)}
+                  onBlur={() => void renameAction.run(d.id)}
+                  disabled={anyBusy}
+                  className="min-w-0 flex-1 rounded-lg border border-signal bg-transparent px-2 py-1 text-sm outline-none disabled:opacity-60"
                 />
               ) : (
                 <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -79,15 +93,18 @@ export function DeckSwitcher({ onClose }: { onClose: () => void }) {
                   setEditingId(d.id)
                   setEditName(d.name)
                 }}
+                disabled={anyBusy}
                 aria-label="Renomear baralho"
-                className="shrink-0 font-mono text-[10px] uppercase text-muted hover:text-text"
+                className="shrink-0 font-mono text-[10px] uppercase text-muted hover:text-text disabled:opacity-40"
               >
                 editar
               </button>
               <button
-                onClick={() => remove(d)}
+                onClick={() => void removeAction.run(d)}
+                disabled={anyBusy}
                 aria-label="Excluir baralho"
-                className="shrink-0 font-mono text-[10px] uppercase text-muted hover:text-miss"
+                aria-busy={removeAction.busy}
+                className="shrink-0 font-mono text-[10px] uppercase text-muted hover:text-miss disabled:opacity-40"
               >
                 excluir
               </button>
@@ -101,21 +118,34 @@ export function DeckSwitcher({ onClose }: { onClose: () => void }) {
               autoFocus
               value={name}
               onChange={(e) => setName(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && submitCreate()}
+              onKeyDown={(e) => e.key === 'Enter' && void createAction.run()}
+              disabled={createAction.busy}
               placeholder="Nome do baralho"
-              className="min-w-0 flex-1 rounded-lg border border-line bg-transparent px-3 py-2 text-sm outline-none focus:border-signal"
+              className="min-w-0 flex-1 rounded-lg border border-line bg-transparent px-3 py-2 text-sm outline-none focus:border-signal disabled:opacity-60"
             />
-            <button onClick={submitCreate} className="shrink-0 rounded-lg bg-signal px-3 py-2 text-sm text-ink">
-              Criar
+            <button
+              onClick={() => void createAction.run()}
+              disabled={createAction.busy}
+              aria-busy={createAction.busy}
+              className="shrink-0 rounded-lg bg-signal px-3 py-2 text-sm text-ink disabled:opacity-60"
+            >
+              {createAction.busy ? 'Criando…' : 'Criar'}
             </button>
           </div>
         ) : (
           <button
             onClick={() => setCreating(true)}
-            className="mt-3 w-full rounded-xl border border-dashed border-line py-2 text-sm text-muted transition hover:border-signal hover:text-signal"
+            disabled={anyBusy}
+            className="mt-3 w-full rounded-xl border border-dashed border-line py-2 text-sm text-muted transition hover:border-signal hover:text-signal disabled:opacity-40"
           >
             + Novo baralho
           </button>
+        )}
+
+        {(createAction.error ?? renameAction.error ?? removeAction.error) && (
+          <p className="mt-3 text-sm text-miss">
+            {createAction.error ?? renameAction.error ?? removeAction.error}
+          </p>
         )}
       </div>
     </div>
@@ -124,6 +154,7 @@ export function DeckSwitcher({ onClose }: { onClose: () => void }) {
 
 function DeckDueBadge({ deck }: { deck: Deck }) {
   const tick = useDueTick()
-  const count = useLiveQuery(() => queueCount(deck), [deck, tick]) ?? 0
-  return <DueBadge count={count} label={`${count} para revisar`} />
+  const count = useLiveQuery(() => queueCount(deck), [deck, tick])
+  const { value } = useLastDefined(count)
+  return <DueBadge count={value} label={`${value ?? 0} para revisar`} />
 }

@@ -22,6 +22,9 @@ export function Review({ deck, onDone }: { deck: Deck; onDone: () => void }) {
   const [audioSource, setAudioSource] = useState<AudioSource>('normal')
   const [audioError, setAudioError] = useState<string | null>(null)
   const [done, setDone] = useState(0)
+  // Guarda a resposta em voo: sem isto, Space/tecla repetida ou um clique
+  // duplo em "Errei"/"Acertei" registravam duas respostas para o mesmo cartão.
+  const [answering, setAnswering] = useState(false)
   const shownAt = useRef(Date.now())
   // Descarta o resultado de um play() que não é mais o mais recente — o
   // StrictMode do React roda o efeito de troca de cartão duas vezes em dev
@@ -78,12 +81,17 @@ export function Review({ deck, onDone }: { deck: Deck; onDone: () => void }) {
   }, [queue, index])
 
   async function rate(rating: 'again' | 'good') {
-    if (!card) return
-    await answer(card, rating, Date.now() - shownAt.current)
-    setDone((d) => d + 1)
-    // Ao errar, o áudio toca de novo com a resposta à vista antes de seguir.
-    if (rating === 'again') await play(normalRate(), 'normal')
-    setIndex((i) => i + 1)
+    if (!card || answering) return
+    setAnswering(true)
+    try {
+      await answer(card, rating, Date.now() - shownAt.current)
+      setDone((d) => d + 1)
+      // Ao errar, o áudio toca de novo com a resposta à vista antes de seguir.
+      if (rating === 'again') await play(normalRate(), 'normal')
+      setIndex((i) => i + 1)
+    } finally {
+      setAnswering(false)
+    }
   }
 
   useEffect(() => {
@@ -94,7 +102,7 @@ export function Review({ deck, onDone }: { deck: Deck; onDone: () => void }) {
       }
       if (e.key === '1' && revealed) void rate('again')
       if (e.key === '2' && revealed) void rate('good')
-      if (e.key === 'r') void play(normalRate(), 'normal')
+      if (e.key === 'r' && audioStatus !== 'loading') void play(normalRate(), 'normal')
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -174,9 +182,14 @@ export function Review({ deck, onDone }: { deck: Deck; onDone: () => void }) {
         <div className="mt-6 flex flex-wrap items-center gap-2">
           <AudioButton
             onClick={() => play(normalRate(), 'normal')}
-            label={repeatLabel(audioStatus === 'playing' && audioSource === 'normal')}
+            disabled={audioStatus === 'loading'}
+            label={repeatLabel(audioSource === 'normal' ? audioStatus : 'idle')}
           />
-          <AudioButton onClick={() => play(slowRate(), 'slow')} label="Devagar" />
+          <AudioButton
+            onClick={() => play(slowRate(), 'slow')}
+            disabled={audioStatus === 'loading'}
+            label="Devagar"
+          />
         </div>
 
         <div className="mt-3">
@@ -210,14 +223,18 @@ export function Review({ deck, onDone }: { deck: Deck; onDone: () => void }) {
         {revealed ? (
           <div className="grid grid-cols-2 gap-3">
             <button
-              onClick={() => rate('again')}
-              className="rounded-2xl border border-miss/40 bg-miss/10 py-4 font-medium text-miss transition hover:bg-miss/20"
+              onClick={() => void rate('again')}
+              disabled={answering}
+              aria-busy={answering}
+              className="rounded-2xl border border-miss/40 bg-miss/10 py-4 font-medium text-miss transition hover:bg-miss/20 disabled:opacity-60"
             >
               Errei
             </button>
             <button
-              onClick={() => rate('good')}
-              className="rounded-2xl border border-hit/40 bg-hit/10 py-4 font-medium text-hit transition hover:bg-hit/20"
+              onClick={() => void rate('good')}
+              disabled={answering}
+              aria-busy={answering}
+              className="rounded-2xl border border-hit/40 bg-hit/10 py-4 font-medium text-hit transition hover:bg-hit/20 disabled:opacity-60"
             >
               Acertei
             </button>
@@ -235,11 +252,21 @@ export function Review({ deck, onDone }: { deck: Deck; onDone: () => void }) {
   )
 }
 
-function AudioButton({ onClick, label }: { onClick: () => void; label: string }) {
+function AudioButton({
+  onClick,
+  label,
+  disabled = false,
+}: {
+  onClick: () => void
+  label: string
+  disabled?: boolean
+}) {
   return (
     <button
       onClick={onClick}
-      className="rounded-full border border-line px-4 py-2 font-mono text-xs uppercase tracking-wider text-muted transition hover:border-signal hover:text-signal"
+      disabled={disabled}
+      aria-busy={disabled}
+      className="rounded-full border border-line px-4 py-2 font-mono text-xs uppercase tracking-wider text-muted transition hover:border-signal hover:text-signal disabled:opacity-60"
     >
       {label}
     </button>

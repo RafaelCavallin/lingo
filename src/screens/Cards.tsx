@@ -1,8 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { deleteCard, liveCards, type Card, type Deck } from '../services/db'
+import { AsyncRegion } from '../components/AsyncRegion'
 import { MobileNav } from '../components/MobileNav'
 import { MarkedText } from '../components/MarkedText'
+import { CardsListSkeleton } from '../components/CardsListSkeleton'
+import { Skeleton } from '../components/Skeleton'
+import { usePendingIndicator } from '../components/usePendingIndicator'
 import { EditCard } from './EditCard'
 
 /**
@@ -81,6 +85,10 @@ export function Cards({ deck, onBack }: { deck: Deck; onBack: () => void }) {
     setSelected(new Set())
   }
 
+  // Chamado incondicionalmente, antes do `return` cedo de baixo: um hook não
+  // pode ficar atrás de uma condição que muda entre renders (`editing`).
+  const showLoading = usePendingIndicator(filtered === null)
+
   // Tela de edição dedicada no lugar da lista; a lista reflete a mudança
   // sozinha ao voltar (useLiveQuery).
   if (editing) return <EditCard card={editing} onDone={() => setEditing(null)} />
@@ -92,7 +100,11 @@ export function Cards({ deck, onBack }: { deck: Deck; onBack: () => void }) {
             inteira, mantendo o contador na borda direita como antes. */}
         <div className="flex min-w-0 flex-1 items-center justify-between gap-4">
           <button onClick={onBack} className="hover:text-text">← Início</button>
-          <span className="truncate">{filtered?.length ?? 0} cartões</span>
+          {filtered === null ? (
+            <Skeleton shape="text" width="4.5rem" height="0.875rem" />
+          ) : (
+            <span className="truncate">{filtered.length} cartões</span>
+          )}
         </div>
         <MobileNav />
       </header>
@@ -124,52 +136,64 @@ export function Cards({ deck, onBack }: { deck: Deck; onBack: () => void }) {
           </div>
         )}
 
-        <ul className="mt-6 divide-y divide-line">
-          {filtered === null && <p className="py-8 text-center text-muted">Carregando…</p>}
-          {filtered?.length === 0 && (
-            <p className="py-8 text-center text-muted">
-              {query ? 'Nenhum cartão bate com a busca.' : 'Este baralho ainda não tem cartões.'}
-            </p>
-          )}
-          {visible?.map((c) => (
-            <li key={c.id} style={ROW_STYLE} className="flex items-start gap-3 py-4">
-              <input
-                type="checkbox"
-                checked={selected.has(c.id)}
-                onChange={() => toggle(c.id)}
-                className="mt-1.5 h-4 w-4 shrink-0 accent-signal"
-                aria-label="Selecionar cartão"
-              />
-              <div className="min-w-0 flex-1">
-                <p className="truncate font-display text-lg leading-snug">
-                  <MarkedText text={c.sentence} emphasis={c.emphasisRanges} />
-                </p>
-                <p className="mt-1 truncate text-sm text-muted">
-                  <MarkedText text={c.translation} emphasis={c.translationEmphasisRanges} />
-                </p>
-              </div>
-              <button
-                onClick={() => setEditing(c)}
-                aria-label="Editar cartão"
-                className="shrink-0 rounded-full border border-line px-3 py-1.5 font-mono text-xs uppercase tracking-wider text-muted transition hover:border-signal hover:text-signal"
-              >
-                Editar
-              </button>
-              <button
-                onClick={() => removeOne(c)}
-                aria-label="Excluir cartão"
-                className="shrink-0 rounded-full border border-line px-3 py-1.5 font-mono text-xs uppercase tracking-wider text-muted transition hover:border-miss hover:text-miss"
-              >
-                Excluir
-              </button>
-            </li>
-          ))}
-          {hasMore && (
-            <li ref={sentinelRef} aria-hidden className="py-4 text-center text-xs text-muted">
-              Carregando mais…
-            </li>
-          )}
-        </ul>
+        <AsyncRegion
+          loading={showLoading}
+          label="Carregando seus cartões…"
+          skeleton={
+            <div className="mt-6">
+              <CardsListSkeleton />
+            </div>
+          }
+        >
+          <ul className="mt-6 divide-y divide-line">
+            {filtered !== null && filtered.length === 0 && (
+              <p className="py-8 text-center text-muted">
+                {query ? 'Nenhum cartão bate com a busca.' : 'Este baralho ainda não tem cartões.'}
+              </p>
+            )}
+            {visible?.map((c) => (
+              <li key={c.id} style={ROW_STYLE} className="flex items-start gap-3 py-4">
+                <input
+                  type="checkbox"
+                  checked={selected.has(c.id)}
+                  onChange={() => toggle(c.id)}
+                  className="mt-1.5 h-4 w-4 shrink-0 accent-signal"
+                  aria-label="Selecionar cartão"
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-display text-lg leading-snug">
+                    <MarkedText text={c.sentence} emphasis={c.emphasisRanges} />
+                  </p>
+                  <p className="mt-1 truncate text-sm text-muted">
+                    <MarkedText text={c.translation} emphasis={c.translationEmphasisRanges} />
+                  </p>
+                </div>
+                <button
+                  onClick={() => setEditing(c)}
+                  aria-label="Editar cartão"
+                  className="shrink-0 rounded-full border border-line px-3 py-1.5 font-mono text-xs uppercase tracking-wider text-muted transition hover:border-signal hover:text-signal"
+                >
+                  Editar
+                </button>
+                <button
+                  onClick={() => removeOne(c)}
+                  aria-label="Excluir cartão"
+                  className="shrink-0 rounded-full border border-line px-3 py-1.5 font-mono text-xs uppercase tracking-wider text-muted transition hover:border-miss hover:text-miss"
+                >
+                  Excluir
+                </button>
+              </li>
+            ))}
+            {/* Não é espera de verdade: `setVisibleCount` é síncrono, então isto
+                é só o marcador que o IntersectionObserver observa para revelar
+                mais linhas — sem afirmar um carregamento que não acontece. */}
+            {hasMore && (
+              <li ref={sentinelRef} aria-hidden className="py-4 text-center text-xs text-muted/40">
+                ···
+              </li>
+            )}
+          </ul>
+        </AsyncRegion>
       </main>
     </div>
   )

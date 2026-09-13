@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useDeck } from '../contexts/DeckContext'
 import { liveCards, type Deck } from '../services/db'
+import { Skeleton } from './Skeleton'
+import { useAsyncAction } from './useAsyncAction'
 
 /**
  * Último passo da importação: para qual baralho do Lingo os cartões escolhidos
@@ -25,7 +27,6 @@ export function ImportTarget({
   const [targetId, setTargetId] = useState(deck?.id ?? '')
   const [creating, setCreating] = useState(false)
   const [name, setName] = useState(suggestedName)
-  const [busy, setBusy] = useState(false)
 
   const newName = name.trim()
   // Com o campo de baralho novo aberto e preenchido, é ele que manda —
@@ -34,16 +35,11 @@ export function ImportTarget({
   const existing = decks.find((d) => d.id === targetId)
   const targetName = usingNew ? newName : existing?.name
 
-  async function confirm() {
-    if (!targetName || busy) return
-    setBusy(true)
-    try {
-      const target = usingNew ? await createDeck(newName) : existing
-      if (target) onConfirm(target)
-    } catch {
-      setBusy(false)
-    }
-  }
+  const confirmAction = useAsyncAction(async () => {
+    if (!targetName) return
+    const target = usingNew ? await createDeck(newName) : existing
+    if (target) onConfirm(target)
+  })
 
   return (
     <div className="mt-8">
@@ -78,7 +74,7 @@ export function ImportTarget({
           autoFocus
           value={name}
           onChange={(e) => setName(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && confirm()}
+          onKeyDown={(e) => e.key === 'Enter' && void confirmAction.run()}
           placeholder="Nome do baralho novo"
           className="mt-3 w-full rounded-xl border border-signal bg-surface px-4 py-3 text-sm outline-none placeholder:text-muted/40"
         />
@@ -96,19 +92,22 @@ export function ImportTarget({
           ← Voltar
         </button>
         <button
-          onClick={confirm}
-          disabled={!targetName || busy}
+          onClick={() => void confirmAction.run()}
+          disabled={!targetName || confirmAction.busy}
+          aria-busy={confirmAction.busy}
           className="min-w-0 flex-1 truncate rounded-2xl bg-signal py-4 font-medium text-ink transition hover:brightness-110 disabled:bg-surface disabled:text-muted"
         >
           {targetName ? `Importar em "${targetName}"` : 'Dê um nome ao baralho'}
         </button>
       </div>
+
+      {confirmAction.error && <p className="mt-3 text-sm text-miss">{confirmAction.error}</p>}
     </div>
   )
 }
 
 function CardCount({ deckId }: { deckId: string }) {
   const count = useLiveQuery(() => liveCards(deckId).count(), [deckId])
-  if (count === undefined) return null
+  if (count === undefined) return <Skeleton shape="text" width="1.5rem" height="0.75rem" />
   return <span className="shrink-0 font-mono text-[10px] text-muted">{count}</span>
 }

@@ -29,9 +29,12 @@ export function MarkActions({
 }) {
   const keepSelection = (e: { preventDefault: () => void }) => e.preventDefault()
 
+  // Altura mínima comum aos três layouts: sem ela, cada seleção no textarea
+  // troca de um texto de ~20px para uma linha de botões de ~32px, e o
+  // formulário inteiro reflui a cada clique/arraste.
   if (markedKind)
     return (
-      <div className="mt-2">
+      <div className="mt-2 min-h-[2rem]">
         <button onMouseDown={keepSelection} onClick={onRemove} className={PILL}>
           {markedKind === 'cloze' ? 'Mostrar de novo' : 'Tirar destaque'}
         </button>
@@ -40,7 +43,7 @@ export function MarkActions({
 
   if (hasSelection)
     return (
-      <div className="mt-2 flex flex-wrap gap-3">
+      <div className="mt-2 flex min-h-[2rem] flex-wrap gap-3">
         {allowCloze && (
           <button onMouseDown={keepSelection} onClick={() => onAdd('cloze')} className={PILL}>
             Ocultar seleção
@@ -62,7 +65,7 @@ export function MarkActions({
       </div>
     )
 
-  return <p className="mt-2 text-xs text-muted/70">{status(marks, allowCloze)}</p>
+  return <p className="mt-2 flex min-h-[2rem] items-center text-xs text-muted/70">{status(marks, allowCloze)}</p>
 }
 
 function status(marks: Marks, allowCloze: boolean): string {

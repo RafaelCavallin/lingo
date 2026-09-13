@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import { MarkActions } from './MarkActions'
 import { MarkBackdrop } from './MarkBackdrop'
 import { markAt, marksOf, remapMarks, trimRange, type MarkKind, type Marks, type Range } from './textMarks'
@@ -38,7 +38,10 @@ export function MarkableField({
   const ref = useRef<HTMLTextAreaElement>(null)
   const [selection, setSelection] = useState<Range | null>(null)
 
-  useEffect(() => {
+  // `useLayoutEffect`, não `useEffect`: o crescimento precisa acontecer antes
+  // do paint — com `useEffect` dava para ver a caixa com a altura errada por
+  // um frame e só então saltar (visível quando o texto chega de um fetch).
+  useLayoutEffect(() => {
     const grow = () => growToFit(ref.current)
     grow()
     window.addEventListener('resize', grow)

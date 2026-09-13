@@ -304,6 +304,17 @@ describe('restoreBackup — mesclar', () => {
     expect(vivos.map((d) => d.id)).toEqual(['do-arquivo'])
   })
 
+  it('marca o baralho padrão descartado como excluído, em vez de apagá-lo sem deixar rastro', async () => {
+    const file = await backupOf({ decks: [makeDeck({ id: 'do-arquivo' })], cards: [makeCard({ deckId: 'do-arquivo' })] })
+    await db.decks.add(makeDeck({ id: 'semeado', name: DEFAULT_DECK_NAME }))
+
+    await restore(file)
+
+    const semeado = await db.decks.get('semeado')
+    expect(semeado?.deletedAt).toBeGreaterThan(0)
+    expect(semeado?.dirty).toBe(1)
+  })
+
   it('mantém o baralho padrão quando a restauração falha no meio', async () => {
     const file = await backupOf({ decks: [makeDeck({ id: 'do-arquivo' })], cards: [makeCard({ deckId: 'do-arquivo' })] })
     await db.decks.add(makeDeck({ id: 'semeado', name: DEFAULT_DECK_NAME }))

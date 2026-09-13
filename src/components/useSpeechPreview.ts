@@ -1,26 +1,30 @@
 import { useState } from 'react'
 import { normalRate, speech } from '../services/audio'
+import type { ListenPhase } from '../services/audioLabels'
 
 /**
- * Pré-escuta da frase no formulário do cartão: o mesmo botão toca e pausa.
- * O áudio é marcado como "preview" para não virar lixo permanente no cache.
+ * Pré-escuta da frase no formulário do cartão: o mesmo botão toca e pausa. O
+ * `onStart` de `speech.speak` (ver services/audio.ts) é o que separa "buscando
+ * o áudio" de "tocando" — sem ele o botão dizia "Pausar" durante todo o fetch
+ * do TTS, até 8s. O áudio é marcado como "preview" para não virar lixo
+ * permanente no cache.
  */
 export function useSpeechPreview(sentence: string) {
-  const [playing, setPlaying] = useState(false)
+  const [phase, setPhase] = useState<ListenPhase>('idle')
 
   async function toggle(): Promise<void> {
-    if (playing) {
+    if (phase !== 'idle') {
       speech.stop()
-      setPlaying(false)
+      setPhase('idle')
       return
     }
-    setPlaying(true)
+    setPhase('loading')
     try {
-      await speech.speak('preview', sentence, normalRate())
+      await speech.speak('preview', sentence, normalRate(), () => setPhase('playing'))
     } finally {
-      setPlaying(false)
+      setPhase('idle')
     }
   }
 
-  return { playing, toggle }
+  return { phase, toggle }
 }

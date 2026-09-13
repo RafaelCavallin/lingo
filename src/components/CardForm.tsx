@@ -1,10 +1,13 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { type Hint } from '../services/db'
 import { listenLabel } from '../services/audioLabels'
+import { errorMessageOf } from './asyncAction'
 import { enrich, EnrichUnavailable } from '../services/enrich'
 import { HintsEditor } from './HintsEditor'
 import { MarkableField } from './MarkableField'
+import { Skeleton, SkeletonLines } from './Skeleton'
 import { type Marks, type Range } from './textMarks'
+import { useAsyncAction } from './useAsyncAction'
 import { usePhoneticLookup } from './usePhoneticLookup'
 import { useSpeechPreview } from './useSpeechPreview'
 
@@ -53,16 +56,26 @@ export function CardForm({
   const [notice, setNotice] = useState<string | null>(null)
   const phoneticLookup = usePhoneticLookup(setPhonetic)
   const preview = useSpeechPreview(sentence)
+  // Sair da tela no meio da geração não pode deixar a resposta sobrescrever
+  // campos de um formulário que já não existe mais.
+  const enrichAbort = useRef<AbortController | null>(null)
+  useEffect(() => () => enrichAbort.current?.abort(), [])
 
+  const generating = status === 'loading'
   const ready =
-    sentence.trim().length > 0 && translation.trim().length > 0 && phoneticLookup.status !== 'loading'
+    sentence.trim().length > 0 &&
+    translation.trim().length > 0 &&
+    phoneticLookup.status !== 'loading' &&
+    !generating
 
   async function generate() {
     if (!sentence.trim()) return
     setStatus('loading')
     setNotice(null)
+    const controller = new AbortController()
+    enrichAbort.current = controller
     try {
-      const result = await enrich(sentence.trim())
+      const result = await enrich(sentence.trim(), controller.signal)
       // Tradução nova, offsets antigos: os destaques dela não valem mais.
       setTranslation(result.translation)
       setTranslationMarks(NO_MARKS)
@@ -71,13 +84,13 @@ export function CardForm({
       setHints((prev) => [...prev.filter((h) => h.source === 'user'), ...result.hints])
       setStatus('idle')
     } catch (e) {
+      if (controller.signal.aborted) return
       setStatus(e instanceof EnrichUnavailable ? 'manual' : 'idle')
-      setNotice(e instanceof Error ? e.message : 'Não foi possível gerar agora.')
+      setNotice(errorMessageOf(e, 'Não foi possível gerar agora.'))
     }
   }
 
-  async function submit() {
-    if (!ready) return
+  const submitAction = useAsyncAction(async () => {
     await onSubmit({
       sentence,
       translation,
@@ -96,7 +109,7 @@ export function CardForm({
       setMarks(NO_MARKS)
       setTranslationMarks(NO_MARKS)
     }
-  }
+  })
 
   return (
     <>
@@ -126,18 +139,23 @@ export function CardForm({
               onClick={() => void preview.toggle()}
               className="font-mono text-xs uppercase tracking-wider text-muted hover:text-signal"
             >
-              {listenLabel(preview.playing)}
+              {listenLabel(preview.phase)}
             </button>
             <button
               onClick={generate}
-              disabled={status === 'loading'}
+              disabled={generating}
               className="font-mono text-xs uppercase tracking-wider text-signal disabled:text-muted"
             >
-              {status === 'loading' ? 'Gerando…' : '↻ Gerar tradução e dicas'}
+              {generating ? 'Gerando…' : '↻ Gerar tradução e dicas'}
             </button>
           </div>
         )}
 
+        {generating && (
+          <p role="status" aria-live="polite" className="sr-only">
+            Gerando tradução e dicas…
+          </p>
+        )}
         {notice && <p className="mt-3 text-sm text-muted">{notice}</p>}
         {phoneticLookup.notice && <p className="mt-3 text-sm text-muted">{phoneticLookup.notice}</p>}
 
@@ -145,15 +163,25 @@ export function CardForm({
           Tradução
         </label>
         <div className="mt-2">
-          <MarkableField
-            value={translation}
-            onChange={setTranslation}
-            marks={translationMarks}
-            onMarksChange={setTranslationMarks}
-            allowCloze={false}
-            placeholder={status === 'manual' ? 'Estou ansioso para ver você de novo.' : 'Gerada ao sair do campo acima — edite à vontade.'}
-            textClassName="text-lg"
-          />
+          {generating && !translation.trim() ? (
+            <div className="rounded-xl border border-line bg-surface px-4 py-3">
+              <SkeletonLines lines={2} lineHeight="1.25rem" />
+            </div>
+          ) : (
+            <MarkableField
+              value={translation}
+              onChange={setTranslation}
+              marks={translationMarks}
+              onMarksChange={setTranslationMarks}
+              allowCloze={false}
+              placeholder={
+                status === 'manual'
+                  ? 'Estou ansioso para ver você de novo.'
+                  : 'Gerada ao sair do campo acima — edite à vontade.'
+              }
+              textClassName="text-lg"
+            />
+          )}
         </div>
 
         <label className="mt-8 flex items-center gap-2 font-mono text-xs uppercase tracking-wider text-muted">
@@ -164,24 +192,30 @@ export function CardForm({
             </span>
           )}
         </label>
-        <input
-          value={phonetic}
-          onChange={(e) => setPhonetic(e.target.value)}
-          disabled={phoneticLookup.status === 'loading'}
-          placeholder="ˈbərd(ə)n"
-          className="mt-2 w-full rounded-xl border border-line bg-surface px-4 py-3 font-mono text-lg text-signal outline-none placeholder:text-muted/40 focus:border-signal disabled:opacity-60"
-        />
+        {generating && !phonetic ? (
+          <Skeleton shape="block" height="3.25rem" className="mt-2 w-full" />
+        ) : (
+          <input
+            value={phonetic}
+            onChange={(e) => setPhonetic(e.target.value)}
+            disabled={phoneticLookup.status === 'loading'}
+            placeholder="ˈbərd(ə)n"
+            className="mt-2 w-full rounded-xl border border-line bg-surface px-4 py-3 font-mono text-lg text-signal outline-none placeholder:text-muted/40 focus:border-signal disabled:opacity-60"
+          />
+        )}
 
-        <HintsEditor hints={hints} onChange={setHints} />
+        <HintsEditor hints={hints} onChange={setHints} loading={generating} />
       </main>
 
       <button
-        onClick={submit}
-        disabled={!ready}
+        onClick={() => void submitAction.run()}
+        disabled={!ready || submitAction.busy}
+        aria-busy={submitAction.busy}
         className="w-full rounded-2xl bg-signal py-4 font-medium text-ink transition hover:brightness-110 disabled:bg-surface disabled:text-muted"
       >
-        {submitLabel}
+        {submitAction.busy ? 'Salvando…' : submitLabel}
       </button>
+      {submitAction.error && <p className="mt-3 text-sm text-miss">{submitAction.error}</p>}
     </>
   )
 }

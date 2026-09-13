@@ -7,6 +7,8 @@ import { MIN_REVIEWS, NotEnoughData, optimize, reviewCount } from '../services/o
 import { MobileNav } from '../components/MobileNav'
 import { BackupSection } from '../components/BackupSection'
 import { Message, Section, Toggle } from '../components/SettingsControls'
+import { Skeleton } from '../components/Skeleton'
+import { useAsyncAction } from '../components/useAsyncAction'
 
 const SAMPLE = 'This is how your sentences will sound.'
 
@@ -19,7 +21,7 @@ export function Settings({
   onBack: () => void
   onAccount: () => void
 }) {
-  const { configured: syncConfigured, session } = useAuth()
+  const { configured: syncConfigured, phase: authPhase, session } = useAuth()
   const [voice, setLocalVoice] = useState(deck.voice)
   const [rate, setRate] = useState(deck.speechRate)
   const [listenFirst, setListenFirst] = useState(deck.listenFirst)
@@ -29,35 +31,56 @@ export function Settings({
     tone: null,
   })
   const [neuralVoice, setNeuralVoice] = useState(usingNeuralVoice())
+  // Cobre o `speech.warm` da montagem: sem isto o banner de voz neural
+  // indisponível aparecia do nada até 8s depois de abrir Ajustes.
+  const [checkingVoice, setCheckingVoice] = useState(true)
   const [reviews, setReviews] = useState(0)
   const [optState, setOptState] = useState<{ busy: boolean; message: string | null; tone: 'ok' | 'bad' | null }>({
     busy: false,
     message: null,
     tone: null,
   })
+  // A tela promete "pode levar alguns minutos" — o tempo decorrido é o único
+  // sinal possível, já que o worker não reporta progresso.
+  const [optElapsedS, setOptElapsedS] = useState(0)
+
+  useEffect(() => {
+    if (!optState.busy) {
+      setOptElapsedS(0)
+      return
+    }
+    const start = Date.now()
+    const id = window.setInterval(() => setOptElapsedS(Math.round((Date.now() - start) / 1000)), 1000)
+    return () => window.clearInterval(id)
+  }, [optState.busy])
 
   useEffect(() => {
     void reviewCount(deck.id).then(setReviews)
-    void speech.warm('preview', SAMPLE).finally(() => setNeuralVoice(usingNeuralVoice()))
+    setCheckingVoice(true)
+    void speech.warm('preview', SAMPLE).finally(() => {
+      setNeuralVoice(usingNeuralVoice())
+      setCheckingVoice(false)
+    })
   }, [deck.id])
 
   async function playSample(rate: number) {
     await speech.speak('preview', SAMPLE, rate)
     setNeuralVoice(usingNeuralVoice())
   }
+  const sampleAction = useAsyncAction(playSample)
 
   async function chooseVoice(v: string) {
     setLocalVoice(v)
     setVoice(v)
     await db.decks.update(deck.id, { voice: v, updatedAt: Date.now() })
-    void playSample(normalRate())
+    void sampleAction.run(normalRate())
   }
 
   /** Salva ao soltar o slider, não a cada pixel arrastado. */
   async function commitRate(v: number) {
     setSpeechRate(v)
     await db.decks.update(deck.id, { speechRate: v, updatedAt: Date.now() })
-    void playSample(v)
+    void sampleAction.run(v)
   }
 
   async function toggleListenFirst(v: boolean) {
@@ -121,7 +144,8 @@ export function Settings({
             Todas com sotaque americano. Trocar a voz regenera a narração na próxima vez que cada
             frase aparecer — o áudio antigo continua salvo, mas deixa de ser usado.
           </p>
-          {!neuralVoice && (
+          {checkingVoice && <Skeleton shape="block" height="2.5rem" className="mt-3" />}
+          {!checkingVoice && !neuralVoice && (
             <p className="mt-3 rounded-lg border border-miss/40 bg-miss/10 px-3 py-2 text-sm text-miss">
               Voz neural indisponível nesta sessão — as 4 opções abaixo estão soando com a voz do
               navegador, que não diferencia entre elas.
@@ -177,10 +201,12 @@ export function Settings({
           </div>
 
           <button
-            onClick={() => playSample(rate)}
-            className="mt-4 rounded-full border border-line px-4 py-2 font-mono text-xs uppercase tracking-wider text-muted transition hover:border-signal hover:text-signal"
+            onClick={() => void sampleAction.run(rate)}
+            disabled={sampleAction.busy}
+            aria-busy={sampleAction.busy}
+            className="mt-4 rounded-full border border-line px-4 py-2 font-mono text-xs uppercase tracking-wider text-muted transition hover:border-signal hover:text-signal disabled:opacity-60"
           >
-            ▸ Ouvir amostra
+            {sampleAction.busy ? 'Tocando…' : '▸ Ouvir amostra'}
           </button>
         </Section>
 
@@ -199,7 +225,8 @@ export function Settings({
               Criar uma conta é opcional — o app continua funcionando normalmente sem ela. É o que
               passa a habilitar a sincronização entre aparelhos.
             </p>
-            {session ? (
+            {authPhase === 'restoring' && <Skeleton shape="pill" width="10rem" height="2.5rem" className="mt-4" />}
+            {authPhase !== 'restoring' && session && (
               <>
                 <p className="mt-4 text-sm text-text/90">
                   Conectado como <span className="text-signal">{session.user.email}</span>.
@@ -223,7 +250,8 @@ export function Settings({
                   Gerenciar conta
                 </button>
               </>
-            ) : (
+            )}
+            {authPhase !== 'restoring' && !session && (
               <button
                 onClick={onAccount}
                 className="mt-4 rounded-full border border-line px-5 py-2.5 text-sm transition hover:border-signal hover:text-signal"
@@ -250,9 +278,10 @@ export function Settings({
           <button
             onClick={runOptimize}
             disabled={optState.busy || reviews < MIN_REVIEWS}
+            aria-busy={optState.busy}
             className="mt-4 rounded-full border border-line px-5 py-2.5 text-sm transition enabled:hover:border-signal enabled:hover:text-signal disabled:opacity-50"
           >
-            {optState.busy ? 'Otimizando…' : 'Otimizar com meu histórico'}
+            {optState.busy ? `Otimizando… (${optElapsedS}s)` : 'Otimizar com meu histórico'}
           </button>
           <Message state={optState} />
         </Section>

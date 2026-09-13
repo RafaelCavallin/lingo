@@ -3,6 +3,8 @@ import { DeckProvider, useDeck } from './contexts/DeckContext'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { NavigationProvider, type Screen } from './contexts/NavigationContext'
 import { AccountTransition } from './components/AccountTransition'
+import { ProgressSkeleton } from './components/ProgressSkeleton'
+import { RestoreSkeleton } from './components/RestoreSkeleton'
 import { syncNow } from './services/sync'
 import { primeAudio } from './services/audioPrime'
 import { Home } from './screens/Home'
@@ -86,13 +88,13 @@ function AppShell() {
     if (screen === 'account') return <Account onBack={goHome} />
     if (screen === 'restore')
       return (
-        <Suspense fallback={<div className="p-6 font-mono text-xs text-muted">Carregando…</div>}>
+        <Suspense fallback={<RestoreSkeleton onBack={goHome} />}>
           <Restore onBack={goHome} />
         </Suspense>
       )
     if (screen === 'progress')
       return (
-        <Suspense fallback={<div className="p-6 font-mono text-xs text-muted">Carregando…</div>}>
+        <Suspense fallback={<ProgressSkeleton onBack={goHome} />}>
           <Progress deck={deck} onBack={goHome} />
         </Suspense>
       )

@@ -1,16 +1,19 @@
 import { useState } from 'react'
+import { errorMessageOf } from '../components/asyncAction'
 import { MobileNav } from '../components/MobileNav'
 import { RestorePreviewCard } from '../components/RestorePreviewCard'
 import { RestoreResult } from '../components/RestoreResult'
 import { RestoreFilePicker } from '../components/RestoreFilePicker'
 import { RestoreProgressBar } from '../components/RestoreProgressBar'
-import type { BackupPreview, RestorePlan, RestoreProgress, RestoreReport } from '../services/backupRestore'
+import { Skeleton, SkeletonLines } from '../components/Skeleton'
+import type { BackupPreview, RestorePlan, RestoreReport } from '../services/backupRestore'
+import type { RestoreStage } from '../services/restoreProgressView'
 
 type Stage =
   | { name: 'pick' }
   | { name: 'reading' }
   | { name: 'preview'; preview: BackupPreview }
-  | { name: 'applying'; progress: RestoreProgress }
+  | { name: 'applying'; stage: RestoreStage; includesSafetyBackup: boolean }
   | { name: 'done'; report: RestoreReport }
 
 export function Restore({ onBack }: { onBack: () => void }) {
@@ -24,27 +27,33 @@ export function Restore({ onBack }: { onBack: () => void }) {
       const { readBackup } = await import('../services/backupRestore')
       setStage({ name: 'preview', preview: await readBackup(file) })
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Não foi possível ler o arquivo.')
+      setError(errorMessageOf(e, 'Não foi possível ler o arquivo.'))
       setStage({ name: 'pick' })
     }
   }
 
   async function run(preview: BackupPreview, choice: { plan: RestorePlan; includeNarrations: boolean }) {
-    setStage({ name: 'applying', progress: { phase: 'data', done: 0, total: 0 } })
+    const includesSafetyBackup = choice.plan === 'replace'
+    const setApplying = (s: RestoreStage) => setStage({ name: 'applying', stage: s, includesSafetyBackup })
+    setApplying({ step: includesSafetyBackup ? 'safety-backup' : 'data', done: null, total: null })
     try {
       const { restoreBackup } = await import('../services/backupRestore')
-      if (choice.plan === 'replace') {
+      if (includesSafetyBackup) {
         const { downloadBackup } = await import('../services/backupExport')
-        await downloadBackup({ includeNarrations: false })
+        await downloadBackup({
+          includeNarrations: false,
+          onProgress: (pct) => setApplying({ step: 'safety-backup', done: pct, total: 100 }),
+        })
       }
       const report = await restoreBackup({
         preview,
         ...choice,
-        onProgress: (progress) => setStage({ name: 'applying', progress }),
+        onProgress: (progress) =>
+          setApplying({ step: progress.phase, done: progress.done, total: progress.total }),
       })
       setStage({ name: 'done', report })
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'A restauração falhou.')
+      setError(errorMessageOf(e, 'A restauração falhou.'))
       setStage({ name: 'preview', preview })
     }
   }
@@ -57,8 +66,19 @@ export function Restore({ onBack }: { onBack: () => void }) {
       </header>
       <main className="flex-1 py-8">
         {error && <p className="mb-6 text-sm text-miss">{error}</p>}
-        {stage.name === 'pick' && <RestoreFilePicker onPick={pick} />}
-        {stage.name === 'reading' && <p className="font-mono text-sm text-muted">Lendo o arquivo…</p>}
+        {stage.name === 'pick' && <RestoreFilePicker onPick={(f) => void pick(f)} />}
+        {stage.name === 'reading' && (
+          <div>
+            <p role="status" aria-live="polite" className="sr-only">
+              Lendo o arquivo…
+            </p>
+            <Skeleton shape="text" width="12rem" height="2rem" />
+            <div className="mt-4">
+              <SkeletonLines lines={2} lineHeight="0.875rem" />
+            </div>
+            <Skeleton shape="block" height="9rem" className="mt-8" />
+          </div>
+        )}
         {stage.name === 'preview' && (
           <RestorePreviewCard
             preview={stage.preview}
@@ -66,7 +86,9 @@ export function Restore({ onBack }: { onBack: () => void }) {
             onConfirm={(choice) => void run(stage.preview, choice)}
           />
         )}
-        {stage.name === 'applying' && <RestoreProgressBar progress={stage.progress} />}
+        {stage.name === 'applying' && (
+          <RestoreProgressBar stage={stage.stage} includesSafetyBackup={stage.includesSafetyBackup} />
+        )}
         {stage.name === 'done' && <RestoreResult report={stage.report} onBack={onBack} />}
       </main>
     </div>

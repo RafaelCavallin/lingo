@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { errorMessageOf } from './asyncAction'
 import {
   canRecord,
   cancelRecording,
@@ -20,11 +21,21 @@ export function VoiceCompare({ cardId, sentence }: { cardId: string; sentence: s
   const [mode, setMode] = useState<Mode>('idle')
   const [error, setError] = useState<string | null>(null)
   const [comparing, setComparing] = useState<'native' | 'mine' | null>(null)
+  // `getUserMedia` pode ficar minutos esperando o usuário responder ao prompt
+  // de permissão do navegador — sem isto o botão ficava inerte e clicável de
+  // novo, abrindo um segundo pedido por cima do primeiro.
+  const [pending, setPending] = useState(false)
+  // Guarda de qual cartão é a chamada em voo: sem isto, um `getUserMedia`
+  // pendente do cartão anterior resolveria depois da troca e mexeria no
+  // `pending`/`mode` do cartão novo, que já pode ter sua própria ação em voo.
+  const activeCardId = useRef(cardId)
 
   useEffect(() => {
+    activeCardId.current = cardId
     setMode('idle')
     setError(null)
     setComparing(null)
+    setPending(false)
     void getRecording(cardId).then((b) => b && setMode('has-take'))
     return () => {
       cancelRecording()
@@ -33,22 +44,33 @@ export function VoiceCompare({ cardId, sentence }: { cardId: string; sentence: s
   }, [cardId])
 
   async function toggle() {
+    if (pending) return
+    const requestedFor = cardId
     setError(null)
+    setPending(true)
     if (mode === 'recording') {
       try {
         await stopRecording(cardId)
-        setMode('has-take')
+        if (activeCardId.current === requestedFor) setMode('has-take')
       } catch (e) {
-        setMode('idle')
-        setError(e instanceof Error ? e.message : 'A gravação falhou.')
+        if (activeCardId.current === requestedFor) {
+          setMode('idle')
+          setError(errorMessageOf(e, 'A gravação falhou.'))
+        }
+      } finally {
+        if (activeCardId.current === requestedFor) setPending(false)
       }
       return
     }
     try {
       await startRecording()
-      setMode('recording')
+      if (activeCardId.current === requestedFor) setMode('recording')
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Não foi possível gravar.')
+      if (activeCardId.current === requestedFor) {
+        setError(errorMessageOf(e, 'Não foi possível gravar.'))
+      }
+    } finally {
+      if (activeCardId.current === requestedFor) setPending(false)
     }
   }
 
@@ -71,9 +93,11 @@ export function VoiceCompare({ cardId, sentence }: { cardId: string; sentence: s
   return (
     <div className="flex flex-wrap items-center gap-2">
       <button
-        onClick={toggle}
+        onClick={() => void toggle()}
+        disabled={pending}
         aria-pressed={mode === 'recording'}
-        className={`flex items-center gap-2 rounded-full border px-4 py-2 font-mono text-xs uppercase tracking-wider transition ${
+        aria-busy={pending}
+        className={`flex items-center gap-2 rounded-full border px-4 py-2 font-mono text-xs uppercase tracking-wider transition disabled:opacity-60 ${
           mode === 'recording'
             ? 'border-miss bg-miss/15 text-miss'
             : 'border-line text-muted hover:border-signal hover:text-signal'
@@ -84,7 +108,7 @@ export function VoiceCompare({ cardId, sentence }: { cardId: string; sentence: s
             mode === 'recording' ? 'animate-pulse bg-miss' : 'bg-muted'
           }`}
         />
-        {mode === 'recording' ? 'Parar' : mode === 'has-take' ? 'Regravar' : 'Gravar minha voz'}
+        {recordLabel(mode, pending)}
       </button>
 
       {mode === 'has-take' && (
@@ -100,4 +124,11 @@ export function VoiceCompare({ cardId, sentence }: { cardId: string; sentence: s
       {error && <span className="w-full text-sm text-miss">{error}</span>}
     </div>
   )
+}
+
+function recordLabel(mode: Mode, pending: boolean): string {
+  if (pending) return mode === 'recording' ? 'Finalizando…' : 'Permitindo o microfone…'
+  if (mode === 'recording') return 'Parar'
+  if (mode === 'has-take') return 'Regravar'
+  return 'Gravar minha voz'
 }
