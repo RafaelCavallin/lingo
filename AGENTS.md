@@ -132,6 +132,10 @@ Cobre toda a lógica de negócio de `src/services/` — sincronização (LWW, pa
 
 As skills em [.agents/skills/](.agents/skills/) são fluxos de trabalho prontos. As do projeto formam uma esteira: `/criar-prd` → `/criar-techspec` → `/criar-tasks` → `/executar-task` (uma vez por tarefa) → `/executar-review` → `/executar-qa`. Todas gravam seus artefatos em `tasks/prd-<slug>/`.
 
+Para mudanças pequenas e bem delimitadas (ajuste, correção de bug, refatoração localizada) há o atalho `/quick-task`: plano curto aprovado pelo usuário → implementação → validação → revisão leve → resumo, tudo em `tasks/quick-<slug>/` (`plano.md` e `resumo.md`). As rules valem do mesmo jeito; se a tarefa crescer, ela redireciona para a esteira completa.
+
+Para montar massa de dados de teste há o `/criar-cenario-teste`: cria, altera e exclui contas `@lingo.test`, decks, cartões e revisões **só** no Supabase local ou no `lingo-dev`, sempre por `.agents/skills/criar-cenario-teste/scripts/sql.sh`, que recusa produção. Os textos vêm de um catálogo fixo (`references/frases.md`), do usuário ou de placeholders, nunca de IA. Os cenários ficam em `tasks/cenario-<slug>/`.
+
 As demais são de terceiros e vêm do `skills-lock.json` (`agent-browser`, `supabase`, `vercel-cli`, `vercel-react-best-practices`, `vercel-composition-patterns`) ou foram instaladas à mão (`impeccable`, para trabalho de design de interface). **Não edite skills de terceiros** — a próxima atualização sobrescreve, e alterar o conteúdo invalida o hash do lockfile. Ajustes específicos deste projeto vão aqui no `AGENTS.md` ou nas rules.
 
 A `impeccable` **não é versionada** (`.gitignore`): são ~5 MB de bundles de navegador e um índice de fontes de 1 MB, e ela não está no `skills-lock.json`. Num clone limpo ela simplesmente não existe — instale-a à mão em `.agents/skills/impeccable/` e refaça o link com `ln -s ../../.agents/skills/impeccable .claude/skills/impeccable`.
