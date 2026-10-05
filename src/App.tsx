@@ -13,6 +13,7 @@ import { AddCard } from './screens/AddCard'
 import { Import } from './screens/Import'
 import { Settings } from './screens/Settings'
 import { Cards } from './screens/Cards'
+import { Decks } from './screens/Decks'
 import { Account } from './screens/Account'
 import { NoDeck } from './screens/NoDeck'
 // Recharts só é baixado por quem abre o progresso — o caminho de estudo fica leve.
@@ -85,6 +86,7 @@ function AppShell() {
     if (screen === 'settings')
       return <Settings deck={deck} onBack={goHome} onAccount={() => setScreen('account')} />
     if (screen === 'cards') return <Cards deck={deck} onBack={goHome} />
+    if (screen === 'decks') return <Decks onBack={goHome} />
     if (screen === 'account') return <Account onBack={goHome} />
     if (screen === 'restore')
       return (
@@ -107,6 +109,7 @@ function AppShell() {
         onProgress={() => setScreen('progress')}
         onSettings={() => setScreen('settings')}
         onCards={() => setScreen('cards')}
+        onDecks={() => setScreen('decks')}
         onAccount={() => setScreen('account')}
       />
     )

@@ -31,11 +31,14 @@ export interface CardFormValues {
  */
 export function CardForm({
   title,
+  subtitle,
   submitLabel,
   initial,
   onSubmit,
 }: {
   title: string
+  /** Linha de contexto sob o título (ex.: deck de destino). */
+  subtitle?: string
   submitLabel: string
   initial?: CardFormValues
   onSubmit: (values: CardFormValues) => Promise<void>
@@ -115,6 +118,7 @@ export function CardForm({
     <>
       <main className="flex-1 py-10">
         <h1 className="font-display text-3xl">{title}</h1>
+        {subtitle && <p className="mt-2 truncate font-mono text-xs text-muted">{subtitle}</p>}
 
         <label className="mt-8 block font-mono text-xs uppercase tracking-wider text-muted">
           Frase em inglês
@@ -125,7 +129,6 @@ export function CardForm({
             onChange={setSentence}
             marks={marks}
             onMarksChange={setMarks}
-            onBlur={() => status === 'idle' && !translation && generate()}
             placeholder="I'm looking forward to seeing you again."
             textClassName="font-display text-xl"
             onTranscribe={(text) => void phoneticLookup.lookup(text, sentence)}
@@ -177,7 +180,7 @@ export function CardForm({
               placeholder={
                 status === 'manual'
                   ? 'Estou ansioso para ver você de novo.'
-                  : 'Gerada ao sair do campo acima — edite à vontade.'
+                  : 'Toque em “Gerar tradução e dicas” ou escreva aqui.'
               }
               textClassName="text-lg"
             />

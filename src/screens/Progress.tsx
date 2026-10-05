@@ -6,6 +6,9 @@ import { Heatmap } from '../components/Heatmap'
 import { MobileNav } from '../components/MobileNav'
 import { ProgressSkeleton } from '../components/ProgressSkeleton'
 
+const NEW_CARDS_PER_DAY_RANGE = { min: 5, max: 100, step: 5 }
+const YOUNG_LIMIT_RANGE = { min: 20, max: 400, step: 10 }
+
 export function Progress({ deck, onBack }: { deck: Deck; onBack: () => void }) {
   const [stats, setStats] = useState<Stats | null>(null)
   const [newPerDay, setNewPerDay] = useState(deck.newCardsPerDay)
@@ -113,9 +116,7 @@ export function Progress({ deck, onBack }: { deck: Deck; onBack: () => void }) {
         <Slider
           label="Máximo de frases novas por dia"
           value={newPerDay}
-          min={5}
-          max={60}
-          step={5}
+          {...NEW_CARDS_PER_DAY_RANGE}
           onChange={(v) => {
             setNewPerDay(v)
             void savePace({ newCardsPerDay: v })
@@ -124,9 +125,7 @@ export function Progress({ deck, onBack }: { deck: Deck; onBack: () => void }) {
         <Slider
           label="Teto de frases ainda não firmadas"
           value={youngLimit}
-          min={20}
-          max={200}
-          step={10}
+          {...YOUNG_LIMIT_RANGE}
           onChange={(v) => {
             setYoungLimit(v)
             void savePace({ youngLimit: v })

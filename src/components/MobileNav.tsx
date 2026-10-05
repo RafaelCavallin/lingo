@@ -13,6 +13,7 @@ const ITEMS: { screen: Screen; label: string }[] = [
   { screen: 'add', label: '+ Frase' },
   { screen: 'import', label: 'Importar' },
   { screen: 'cards', label: 'Cartões' },
+  { screen: 'decks', label: 'Baralhos' },
   { screen: 'progress', label: 'Progresso' },
   { screen: 'settings', label: 'Ajustes' },
 ]

@@ -17,7 +17,7 @@ export type BinaryRating = 'again' | 'good'
 const toFsrsRating = (r: BinaryRating) => (r === 'again' ? Rating.Again : Rating.Good)
 
 const DAY = 86_400_000
-const YOUNG_STABILITY_DAYS = 21
+export const YOUNG_STABILITY_DAYS = 21
 
 export function newCard(
   deckId: string,
@@ -101,7 +101,7 @@ export async function answer(card: Card, rating: BinaryRating, durationMs: numbe
 }
 
 /** Cartões "young": ainda não consolidados. Base do limite inteligente. */
-function isYoung(c: Card): boolean {
+export function isYoung(c: Card): boolean {
   if (c.state === State.Learning || c.state === State.Relearning) return true
   return c.state === State.Review && c.stability < YOUNG_STABILITY_DAYS
 }

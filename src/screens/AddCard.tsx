@@ -36,7 +36,12 @@ export function AddCard({ deck, onBack }: { deck: Deck; onBack: () => void }) {
         <MobileNav />
       </header>
 
-      <CardForm title="Nova frase" submitLabel="Salvar e adicionar outra" onSubmit={save} />
+      <CardForm
+        title="Nova frase"
+        subtitle={`Deck: ${deck.name}`}
+        submitLabel="Salvar e adicionar outra"
+        onSubmit={save}
+      />
     </div>
   )
 }

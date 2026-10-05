@@ -32,6 +32,7 @@ export function Home({
   onProgress,
   onSettings,
   onCards,
+  onDecks,
   onAccount,
 }: {
   deck: Deck
@@ -41,6 +42,7 @@ export function Home({
   onProgress: () => void
   onSettings: () => void
   onCards: () => void
+  onDecks: () => void
   onAccount: () => void
 }) {
   const { configured: syncConfigured, phase: authPhase, session } = useAuth()
@@ -146,13 +148,14 @@ export function Home({
         </AsyncRegion>
       </main>
 
-      {/* Os seis atalhos em linha só cabem a partir de md; abaixo disso quem
+      {/* Os sete atalhos em linha só cabem a partir de md; abaixo disso quem
           navega é o menu hamburguer e aqui fica só o resumo do dia. */}
       <footer className="flex items-center justify-between gap-5 border-t border-line pt-5 font-mono text-xs text-muted">
         <nav className="hidden gap-5 md:flex">
           <FooterLink onClick={onAdd}>+ Frase</FooterLink>
           <FooterLink onClick={onImport}>Importar</FooterLink>
           <FooterLink onClick={onCards}>Cartões</FooterLink>
+          <FooterLink onClick={onDecks}>Baralhos</FooterLink>
           <FooterLink onClick={onProgress}>Progresso</FooterLink>
           <FooterLink onClick={onSettings}>Ajustes</FooterLink>
         </nav>

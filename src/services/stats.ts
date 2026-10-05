@@ -1,5 +1,6 @@
 import { State } from 'ts-fsrs'
 import { db, liveCards, type Card, type Deck, type ReviewLog } from './db'
+import { isYoung, YOUNG_STABILITY_DAYS } from './scheduler'
 import { iso } from '../components/Heatmap'
 
 export interface Stats {
@@ -50,11 +51,9 @@ export async function computeStats(deck: Deck): Promise<Stats> {
     })
   }
 
-  const learning = cards.filter((c) => c.state === State.Learning || c.state === State.Relearning)
-  const review = cards.filter((c) => c.state === State.Review)
   const maturity = {
-    mature: review.filter((c) => c.stability >= 21).length,
-    young: review.filter((c) => c.stability < 21).length + learning.length,
+    mature: cards.filter((c) => c.state === State.Review && c.stability >= YOUNG_STABILITY_DAYS).length,
+    young: cards.filter(isYoung).length,
     fresh: cards.filter((c) => c.state === State.New).length,
   }
 

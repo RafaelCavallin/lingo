@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { State } from 'ts-fsrs'
 import { db, type Card, type Deck, type ReviewLog } from './db'
 import { computeStats, paceAdvice, type Stats } from './stats'
+import { YOUNG_STABILITY_DAYS } from './scheduler'
 import { resetDb } from '../test/dbHelpers'
 
 const NOW = new Date('2026-03-09T12:00:00')
@@ -153,6 +154,17 @@ describe('computeStats', () => {
 
     expect(stats.maturity).toEqual({ mature: 1, young: 2, fresh: 1 })
     expect(stats.youngCount).toBe(2)
+  })
+
+  it('usa o mesmo corte de estabilidade da fila para separar madura de não firmada', async () => {
+    await db.cards.bulkAdd([
+      makeCard({ id: 'no-corte', stability: YOUNG_STABILITY_DAYS }),
+      makeCard({ id: 'abaixo-do-corte', stability: YOUNG_STABILITY_DAYS - 0.5 }),
+    ])
+
+    const stats = await computeStats(makeDeck())
+
+    expect(stats.maturity).toEqual({ mature: 1, young: 1, fresh: 0 })
   })
 
   it('conta a sequência de dias seguidos até a primeira lacuna com cartão vencido', async () => {
