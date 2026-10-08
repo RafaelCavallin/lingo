@@ -45,13 +45,17 @@ self.onmessage = async (e: MessageEvent<OptimizeRequest>) => {
     const response: OptimizeResponse = { ok: true, parameters: Array.from(parameters) }
     self.postMessage(response)
   } catch (err) {
-    const response: OptimizeResponse = {
-      ok: false,
-      error:
-        err instanceof Error && err.message
-          ? err.message
-          : 'O otimizador não conseguiu rodar neste navegador.',
-    }
+    const response: OptimizeResponse = { ok: false, error: describeFailure(err) }
     self.postMessage(response)
   }
+}
+
+const WASM_PANIC_MESSAGE =
+  'O otimizador não conseguiu aprender com o histórico atual. Continue estudando por mais alguns dias e tente de novo.'
+
+/** Um panic do Rust chega como RuntimeError("unreachable"), que não diz nada a quem estuda. */
+function describeFailure(err: unknown): string {
+  if (err instanceof WebAssembly.RuntimeError) return WASM_PANIC_MESSAGE
+  if (err instanceof Error && err.message) return err.message
+  return 'O otimizador não conseguiu rodar neste navegador.'
 }

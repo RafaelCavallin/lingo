@@ -1,7 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { State } from 'ts-fsrs'
 import { db, type Card, type Deck, type ReviewLog } from './db'
-import { MIN_REVIEWS, NotEnoughData, optimize, reviewCount } from './optimizer'
+import {
+  INCOMPATIBLE_PARAMETERS_MESSAGE,
+  MIN_REVIEWS,
+  NotEnoughData,
+  optimize,
+  reviewCount,
+} from './optimizer'
 import { applyFsrsParameters } from './scheduler'
 import { resetDb } from '../test/dbHelpers'
 
@@ -185,7 +191,24 @@ describe('optimize', () => {
     expect(request.ratings).toHaveLength(MIN_REVIEWS)
     expect(request.ratings.slice(0, 2)).toEqual([3, 1])
     expect(request.deltaTs.slice(0, 2)).toEqual([0, 3])
-    expect(request.lengths[0]).toBe(2)
+    expect(request.lengths).toEqual(Array(MIN_REVIEWS / 2).fill(2))
+  })
+
+  it('manda uma sequência por revisão em outro dia e omite as do mesmo dia', async () => {
+    await seedEnoughHistory()
+    await db.cards.add(makeCard({ id: 'longo' }))
+    await db.reviewLogs.bulkAdd([
+      makeLog({ id: 'x1', cardId: 'longo', reviewedAt: NOW.getTime() - 9 * DAY, rating: 'again' }),
+      makeLog({ id: 'x2', cardId: 'longo', reviewedAt: NOW.getTime() - 9 * DAY + 60_000 }),
+      makeLog({ id: 'x3', cardId: 'longo', reviewedAt: NOW.getTime() - 7 * DAY }),
+      makeLog({ id: 'x4', cardId: 'longo', reviewedAt: NOW.getTime() }),
+    ])
+
+    await optimize(makeDeck())
+
+    const request = FakeWorker.lastRequest as { deltaTs: number[]; lengths: number[] }
+    expect(request.lengths.slice(0, 2)).toEqual([3, 4])
+    expect(request.deltaTs.slice(0, 7)).toEqual([0, 0, 2, 0, 0, 2, 7])
   })
 
   it('guarda os parâmetros no deck e passa a usá-los no agendamento', async () => {
@@ -202,6 +225,31 @@ describe('optimize', () => {
     expect(deck.paramsOptimizedAt).toBe(NOW.getTime())
     expect(deck.updatedAt).toBe(NOW.getTime())
     expect(deck.dirty).toBe(1)
+  })
+
+  it('aceita os 19 parâmetros do FSRS-5', async () => {
+    await seedEnoughHistory()
+    await db.decks.add(makeDeck())
+    const fsrs5 = Array.from({ length: 19 }, (_, i) => 0.1 + i)
+    FakeWorker.behavior = { kind: 'ok', parameters: fsrs5 }
+
+    await optimize(makeDeck())
+
+    expect((await db.decks.get('d1'))!.fsrsParams).toEqual(fsrs5)
+  })
+
+  it('recusa parâmetros que o agendamento ignoraria e não mexe no deck', async () => {
+    await seedEnoughHistory()
+    await db.decks.add(makeDeck())
+    FakeWorker.behavior = { kind: 'ok', parameters: Array.from({ length: 21 }, () => 1) }
+
+    await expect(optimize(makeDeck())).rejects.toThrow(INCOMPATIBLE_PARAMETERS_MESSAGE)
+
+    const deck = (await db.decks.get('d1'))!
+    expect(deck.fsrsParams).toBeUndefined()
+    expect(deck.paramsOptimizedAt).toBeUndefined()
+    expect(deck.dirty).toBe(0)
+    expect(FakeWorker.terminated).toBe(1)
   })
 
   it('encerra o worker mesmo quando a otimização falha', async () => {
