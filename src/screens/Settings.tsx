@@ -3,9 +3,9 @@ import { db, MAX_RATE, MIN_RATE, VOICES, type Deck } from '../services/db'
 import { setVoice, setSpeechRate, speech, normalRate, usingNeuralVoice } from '../services/audio'
 import { lastSyncAt, syncNow } from '../services/sync'
 import { useAuth } from '../contexts/AuthContext'
-import { MIN_REVIEWS, NotEnoughData, optimize, reviewCount } from '../services/optimizer'
 import { MobileNav } from '../components/MobileNav'
 import { BackupSection } from '../components/BackupSection'
+import { OptimizeSection } from '../components/OptimizeSection'
 import { Message, Section, Toggle } from '../components/SettingsControls'
 import { Skeleton } from '../components/Skeleton'
 import { useAsyncAction } from '../components/useAsyncAction'
@@ -34,28 +34,7 @@ export function Settings({
   // Cobre o `speech.warm` da montagem: sem isto o banner de voz neural
   // indisponível aparecia do nada até 8s depois de abrir Ajustes.
   const [checkingVoice, setCheckingVoice] = useState(true)
-  const [reviews, setReviews] = useState(0)
-  const [optState, setOptState] = useState<{ busy: boolean; message: string | null; tone: 'ok' | 'bad' | null }>({
-    busy: false,
-    message: null,
-    tone: null,
-  })
-  // A tela promete "pode levar alguns minutos" — o tempo decorrido é o único
-  // sinal possível, já que o worker não reporta progresso.
-  const [optElapsedS, setOptElapsedS] = useState(0)
-
   useEffect(() => {
-    if (!optState.busy) {
-      setOptElapsedS(0)
-      return
-    }
-    const start = Date.now()
-    const id = window.setInterval(() => setOptElapsedS(Math.round((Date.now() - start) / 1000)), 1000)
-    return () => window.clearInterval(id)
-  }, [optState.busy])
-
-  useEffect(() => {
-    void reviewCount(deck.id).then(setReviews)
     setCheckingVoice(true)
     void speech.warm('preview', SAMPLE).finally(() => {
       setNeuralVoice(usingNeuralVoice())
@@ -109,24 +88,6 @@ export function Settings({
       error: r.status === 'error' ? r.message : 'A sincronização falhou.',
     }[r.status]
     setSyncState({ busy: false, tone: 'bad', message })
-  }
-
-  async function runOptimize() {
-    setOptState({ busy: true, message: null, tone: null })
-    try {
-      await optimize(deck)
-      setOptState({
-        busy: false,
-        tone: 'ok',
-        message: 'Parâmetros atualizados. Os novos intervalos valem a partir da próxima revisão de cada frase.',
-      })
-    } catch (e) {
-      setOptState({
-        busy: false,
-        tone: 'bad',
-        message: e instanceof NotEnoughData || e instanceof Error ? e.message : 'A otimização falhou.',
-      })
-    }
   }
 
   return (
@@ -264,27 +225,7 @@ export function Settings({
 
         <BackupSection />
 
-        <Section title="Otimizar agendamento">
-          <p className="text-sm text-muted">
-            Reaprende os parâmetros do FSRS a partir do seu histórico, em vez dos padrões. Roda no
-            próprio aparelho e pode levar alguns minutos.
-          </p>
-          <p className="mt-3 font-mono text-xs text-muted">
-            {reviews} revisões acumuladas · mínimo de {MIN_REVIEWS}
-            {deck.paramsOptimizedAt
-              ? ` · otimizado em ${new Date(deck.paramsOptimizedAt).toLocaleDateString('pt-BR')}`
-              : ' · nunca otimizado'}
-          </p>
-          <button
-            onClick={runOptimize}
-            disabled={optState.busy || reviews < MIN_REVIEWS}
-            aria-busy={optState.busy}
-            className="mt-4 rounded-full border border-line px-5 py-2.5 text-sm transition enabled:hover:border-signal enabled:hover:text-signal disabled:opacity-50"
-          >
-            {optState.busy ? `Otimizando… (${optElapsedS}s)` : 'Otimizar com meu histórico'}
-          </button>
-          <Message state={optState} />
-        </Section>
+        <OptimizeSection deck={deck} />
       </main>
     </div>
   )

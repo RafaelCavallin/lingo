@@ -45,4 +45,18 @@ describe('progressMeter', () => {
     expect(m.counter).toBe('0 / 100')
     expect(m.ariaValueNow).toBe(0)
   })
+
+  it('usa o contador informado no lugar de "feito / total", mantendo o ARIA em itens', () => {
+    const m = progressMeter({ label: 'x', done: 30, total: 120, counter: '25% · 30 de 120 itens · 42s' })
+    expect(m.counter).toBe('25% · 30 de 120 itens · 42s')
+    expect(m.ariaValueNow).toBe(30)
+    expect(m.ariaValueMax).toBe(120)
+  })
+
+  it('mostra o contador informado também no modo indeterminado', () => {
+    const m = progressMeter({ label: 'x', done: null, total: null, counter: 'calculando… · 4s' })
+    expect(m.determinate).toBe(false)
+    expect(m.counter).toBe('calculando… · 4s')
+    expect(m.ariaValueNow).toBeNull()
+  })
 })

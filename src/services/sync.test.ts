@@ -55,6 +55,8 @@ function makeLocalDeck(overrides: Partial<Deck> = {}): Deck {
   }
 }
 
+const FSRS6_PARAMETERS = Array.from({ length: 21 }, (_, i) => 0.25 + i / 10)
+
 function makeLocalCard(overrides: Partial<Card> = {}): Card {
   return {
     id: overrides.id ?? 'c1',
@@ -220,6 +222,20 @@ describe('syncNow — pull / last-write-wins', () => {
     expect(result.status).toBe('ok')
     const deck = await db.decks.get('d1')
     expect(deck?.name).toBe('Remoto')
+  })
+
+  it('adopts the 21 optimized FSRS parameters of a newer remote deck', async () => {
+    await db.decks.add(makeLocalDeck({ updatedAt: 1000 }))
+    fakeSupabase.queueResolution('decks', {
+      data: [remoteDeckRow({ updated_at: 2000, fsrs_params: FSRS6_PARAMETERS, params_optimized_at: 5000 })],
+      error: null,
+    })
+
+    await syncNow('manual')
+
+    const deck = await db.decks.get('d1')
+    expect(deck?.fsrsParams).toEqual(FSRS6_PARAMETERS)
+    expect(deck?.paramsOptimizedAt).toBe(5000)
   })
 
   it('overwrites the local row when the remote one is newer', async () => {
@@ -429,6 +445,16 @@ describe('syncNow — push', () => {
     expect((await db.cards.get('c1'))?.dirty).toBe(0)
     expect((await db.cards.get('c2'))?.dirty).toBe(0)
     expect((await db.reviewLogs.get('l1'))?.dirty).toBe(0)
+  })
+
+  it('pushes the 21 optimized FSRS parameters with the deck', async () => {
+    await db.decks.add(makeLocalDeck({ dirty: 1, fsrsParams: FSRS6_PARAMETERS, paramsOptimizedAt: 5000 }))
+
+    await syncNow('manual')
+
+    const args = fakeSupabase.rpcCalls[0].args as { p_decks: Record<string, unknown>[] }
+    expect(args.p_decks[0].fsrs_params).toEqual(FSRS6_PARAMETERS)
+    expect(args.p_decks[0].params_optimized_at).toBe(5000)
   })
 
   it('leaves a card dirty when it was edited again while its push was in flight (CAS)', async () => {

@@ -2,41 +2,69 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { State } from 'ts-fsrs'
 import { db, type Card, type Deck, type ReviewLog } from './db'
 import {
-  INCOMPATIBLE_PARAMETERS_MESSAGE,
+  INVALID_PARAMETERS_MESSAGE,
   MIN_REVIEWS,
   NotEnoughData,
   optimize,
   reviewCount,
 } from './optimizer'
-import { applyFsrsParameters } from './scheduler'
+import { answer, applyFsrsParameters } from './scheduler'
+import { describeParameters } from './fsrsConfig'
+import { PROGRESS_POLL_MS } from './optimizerProgress'
 import { resetDb } from '../test/dbHelpers'
 
 const NOW = new Date('2026-03-09T12:00:00Z')
 const DAY = 86_400_000
-const OPTIMIZED = Array.from({ length: 17 }, (_, i) => 0.5 + i)
+const OPTIMIZED = Array.from({ length: 21 }, (_, i) => 0.5 + i / 10)
 
 type WorkerBehavior =
   | { kind: 'ok'; parameters: number[] }
   | { kind: 'fail'; error: string }
   | { kind: 'crash' }
   | { kind: 'silent' }
+  | { kind: 'progress' }
 
 class FakeWorker {
   static behavior: WorkerBehavior = { kind: 'ok', parameters: OPTIMIZED }
   static lastRequest: unknown = null
   static terminated = 0
+  static counter = new ArrayBuffer(8)
+  static current: FakeWorker | null = null
+  static started: Promise<void> = Promise.resolve()
+  private static markStarted: () => void = () => undefined
+
+  static prepare() {
+    FakeWorker.counter = new ArrayBuffer(8)
+    FakeWorker.current = null
+    FakeWorker.started = new Promise<void>((resolve) => {
+      FakeWorker.markStarted = resolve
+    })
+  }
+
+  static setCounter(processed: number, total: number) {
+    new Uint32Array(FakeWorker.counter).set([processed, total])
+  }
 
   onmessage: ((e: { data: unknown }) => void) | null = null
   onerror: (() => void) | null = null
 
   postMessage(request: unknown) {
     FakeWorker.lastRequest = request
+    FakeWorker.current = this
+    FakeWorker.markStarted()
     const behavior = FakeWorker.behavior
     queueMicrotask(() => {
-      if (behavior.kind === 'ok') this.onmessage?.({ data: { ok: true, parameters: behavior.parameters } })
-      if (behavior.kind === 'fail') this.onmessage?.({ data: { ok: false, error: behavior.error } })
+      if (behavior.kind === 'ok') this.reply({ type: 'done', parameters: behavior.parameters })
+      if (behavior.kind === 'fail') this.reply({ type: 'error', error: behavior.error })
       if (behavior.kind === 'crash') this.onerror?.()
+      if (behavior.kind === 'progress') {
+        this.reply({ type: 'progress-source', buffer: FakeWorker.counter, pointer: 0 })
+      }
     })
+  }
+
+  reply(data: unknown) {
+    this.onmessage?.({ data })
   }
 
   terminate() {
@@ -116,6 +144,7 @@ beforeEach(() => {
   FakeWorker.behavior = { kind: 'ok', parameters: OPTIMIZED }
   FakeWorker.lastRequest = null
   FakeWorker.terminated = 0
+  FakeWorker.prepare()
   vi.stubGlobal('Worker', FakeWorker)
 })
 
@@ -227,29 +256,56 @@ describe('optimize', () => {
     expect(deck.dirty).toBe(1)
   })
 
-  it('aceita os 19 parâmetros do FSRS-5', async () => {
+  it('passa a agendar com os parâmetros otimizados', async () => {
     await seedEnoughHistory()
     await db.decks.add(makeDeck())
-    const fsrs5 = Array.from({ length: 19 }, (_, i) => 0.1 + i)
-    FakeWorker.behavior = { kind: 'ok', parameters: fsrs5 }
+    await db.cards.bulkAdd([makeCard({ id: 'antes' }), makeCard({ id: 'depois' })])
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(NOW)
+    await answer((await db.cards.get('antes'))!, 'good', 1000)
 
     await optimize(makeDeck())
+    await answer((await db.cards.get('depois'))!, 'good', 1000)
 
-    expect((await db.decks.get('d1'))!.fsrsParams).toEqual(fsrs5)
+    const [antes, depois] = await db.cards.bulkGet(['antes', 'depois'])
+    expect(depois!.stability).not.toBe(antes!.stability)
   })
 
-  it('recusa parâmetros que o agendamento ignoraria e não mexe no deck', async () => {
+  it.each([
+    ['tamanho 19', Array.from({ length: 19 }, () => 1)],
+    ['tamanho 22', Array.from({ length: 22 }, () => 1)],
+    ['valor não finito', [...OPTIMIZED.slice(0, 20), Number.NaN]],
+  ])('recusa parâmetros com %s e não mexe no deck', async (_motivo, parameters) => {
     await seedEnoughHistory()
     await db.decks.add(makeDeck())
-    FakeWorker.behavior = { kind: 'ok', parameters: Array.from({ length: 21 }, () => 1) }
+    FakeWorker.behavior = { kind: 'ok', parameters }
 
-    await expect(optimize(makeDeck())).rejects.toThrow(INCOMPATIBLE_PARAMETERS_MESSAGE)
+    await expect(optimize(makeDeck())).rejects.toThrow(INVALID_PARAMETERS_MESSAGE)
 
     const deck = (await db.decks.get('d1'))!
     expect(deck.fsrsParams).toBeUndefined()
     expect(deck.paramsOptimizedAt).toBeUndefined()
     expect(deck.dirty).toBe(0)
     expect(FakeWorker.terminated).toBe(1)
+  })
+
+  it('otimizar um baralho não muda o agendamento de outro', async () => {
+    await seedEnoughHistory()
+    await db.decks.bulkAdd([makeDeck(), makeDeck({ id: 'd2', name: 'Espanhol' })])
+    await db.cards.bulkAdd([makeCard({ id: 'base', deckId: 'd2' }), makeCard({ id: 'outro', deckId: 'd2' })])
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(NOW)
+    await answer((await db.cards.get('base'))!, 'good', 1000)
+
+    await optimize(makeDeck())
+    const outro = (await db.decks.get('d2'))!
+    applyFsrsParameters(outro.fsrsParams)
+    await answer((await db.cards.get('outro'))!, 'good', 1000)
+
+    const [base, depois] = await db.cards.bulkGet(['base', 'outro'])
+    expect(depois!.stability).toBe(base!.stability)
+    expect(depois!.due).toBe(base!.due)
+    expect(describeParameters(outro).source).toBe('default')
   })
 
   it('encerra o worker mesmo quando a otimização falha', async () => {
@@ -276,6 +332,85 @@ describe('optimize', () => {
     await vi.advanceTimersByTimeAsync(180_000)
 
     await pending
+    expect(FakeWorker.terminated).toBe(1)
+  })
+})
+
+describe('optimize — progresso', () => {
+  const fakePollTimers = () => vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+
+  async function startOptimizing(onProgress: (p: unknown) => void) {
+    await seedEnoughHistory()
+    const pending = optimize(makeDeck(), { onProgress })
+    await FakeWorker.started
+    await Promise.resolve()
+    return pending
+  }
+
+  it('informa o progresso lido da memória e para de ler depois do fim', async () => {
+    FakeWorker.behavior = { kind: 'progress' }
+    fakePollTimers()
+    const calls: unknown[] = []
+
+    const pending = startOptimizing((p) => calls.push(p))
+    await FakeWorker.started
+    FakeWorker.setCounter(100, 1000)
+    await vi.advanceTimersByTimeAsync(PROGRESS_POLL_MS)
+    FakeWorker.setCounter(400, 1000)
+    await vi.advanceTimersByTimeAsync(PROGRESS_POLL_MS)
+    FakeWorker.current!.reply({ type: 'done', parameters: OPTIMIZED })
+    await pending
+    const seen = calls.length
+    FakeWorker.setCounter(999, 1000)
+    await vi.advanceTimersByTimeAsync(5 * PROGRESS_POLL_MS)
+
+    expect(calls[0]).toBeNull()
+    expect(calls.slice(-2)).toEqual([{ processed: 100, total: 1000 }, { processed: 400, total: 1000 }])
+    expect(calls).toHaveLength(seen)
+  })
+
+  it('fica indeterminado quando o worker não envia a fonte do progresso', async () => {
+    const calls: unknown[] = []
+
+    await startOptimizing((p) => calls.push(p))
+
+    expect(calls).toEqual([null])
+  })
+
+  it('para a leitura do progresso quando o worker responde com erro', async () => {
+    FakeWorker.behavior = { kind: 'progress' }
+    fakePollTimers()
+    const calls: unknown[] = []
+
+    const pending = startOptimizing((p) => calls.push(p))
+    const failed = expect(pending).rejects.toThrow('falhou no meio')
+    await FakeWorker.started
+    FakeWorker.setCounter(100, 1000)
+    await vi.advanceTimersByTimeAsync(PROGRESS_POLL_MS)
+    FakeWorker.current!.reply({ type: 'error', error: 'falhou no meio' })
+    await failed
+    const seen = calls.length
+    await vi.advanceTimersByTimeAsync(5 * PROGRESS_POLL_MS)
+
+    expect(calls).toHaveLength(seen)
+    expect(FakeWorker.terminated).toBe(1)
+  })
+
+  it('para a leitura do progresso ao estourar o tempo', async () => {
+    FakeWorker.behavior = { kind: 'progress' }
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] })
+    const calls: unknown[] = []
+    await seedEnoughHistory()
+
+    const pending = expect(
+      optimize(makeDeck(), { onProgress: (p) => calls.push(p) }),
+    ).rejects.toThrow('O otimizador demorou demais.')
+    await vi.advanceTimersByTimeAsync(180_000)
+    await pending
+    const seen = calls.length
+    await vi.advanceTimersByTimeAsync(5 * PROGRESS_POLL_MS)
+
+    expect(calls).toHaveLength(seen)
     expect(FakeWorker.terminated).toBe(1)
   })
 })

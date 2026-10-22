@@ -143,7 +143,7 @@ describe('answer', () => {
   })
 
   it('leva o cartão novo para fora do estado New', async () => {
-    const card = makeCard({ state: State.New, reps: 0, stability: 0, lastReview: undefined })
+    const card = makeCard({ state: State.New, reps: 0, stability: 0, difficulty: 0, lastReview: undefined })
     await db.cards.add(card)
 
     await answer(card, 'good', 1000)

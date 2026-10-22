@@ -1,5 +1,5 @@
 /// <reference lib="webworker" />
-import init, { Fsrs, initThreadPool } from 'fsrs-browser'
+import init, { Fsrs, Progress, initThreadPool } from 'fsrs-browser'
 
 export interface OptimizeRequest {
   /** Histórico agrupado por cartão, em ordem cronológica. */
@@ -9,44 +9,62 @@ export interface OptimizeRequest {
 }
 
 export type OptimizeResponse =
-  | { ok: true; parameters: number[] }
-  | { ok: false; error: string }
+  | { type: 'progress-source'; buffer: ArrayBufferLike; pointer: number }
+  | { type: 'done'; parameters: number[] }
+  | { type: 'error'; error: string }
 
-let ready: Promise<void> | null = null
+const MAX_THREADS = 4
 
-async function ensureReady() {
+interface Runtime {
+  memory: WebAssembly.Memory
+  parallel: boolean
+}
+
+let ready: Promise<Runtime> | null = null
+
+async function ensureReady(): Promise<Runtime> {
   ready ??= (async () => {
-    await init()
+    const { memory } = await init()
     // O otimizador usa rayon. Com isolamento de origem, roda em paralelo;
     // sem isolamento, seguimos com uma thread só — mais lento, mas funciona.
-    if (self.crossOriginIsolated) {
-      const threads = Math.min(4, navigator.hardwareConcurrency || 1)
-      if (threads > 1) await initThreadPool(threads)
-    }
+    const threads = self.crossOriginIsolated ? Math.min(MAX_THREADS, navigator.hardwareConcurrency || 1) : 1
+    if (threads > 1) await initThreadPool(threads)
+    return { memory, parallel: threads > 1 }
   })()
   return ready
 }
 
+function post(response: OptimizeResponse) {
+  self.postMessage(response)
+}
+
+/** O monitor de progresso do fsrs-browser roda no pool do rayon: sem pool, não há progresso. */
+function startProgress({ memory, parallel }: Runtime): Progress | undefined {
+  if (!parallel) return undefined
+  const progress = Progress.new()
+  post({ type: 'progress-source', buffer: memory.buffer, pointer: progress.pointer() })
+  return progress
+}
+
+function compute(request: OptimizeRequest, progress: Progress | undefined): number[] {
+  const fsrs = new Fsrs()
+  const parameters = fsrs.computeParameters(
+    new Uint32Array(request.ratings),
+    new Uint32Array(request.deltaTs),
+    new Uint32Array(request.lengths),
+    progress,
+    true,
+  )
+  fsrs.free()
+  return Array.from(parameters)
+}
+
 self.onmessage = async (e: MessageEvent<OptimizeRequest>) => {
   try {
-    await ensureReady()
-    const { ratings, deltaTs, lengths } = e.data
-
-    const fsrs = new Fsrs()
-    const parameters = fsrs.computeParameters(
-      new Uint32Array(ratings),
-      new Uint32Array(deltaTs),
-      new Uint32Array(lengths),
-      undefined,
-      true,
-    )
-    fsrs.free()
-
-    const response: OptimizeResponse = { ok: true, parameters: Array.from(parameters) }
-    self.postMessage(response)
+    const runtime = await ensureReady()
+    post({ type: 'done', parameters: compute(e.data, startProgress(runtime)) })
   } catch (err) {
-    const response: OptimizeResponse = { ok: false, error: describeFailure(err) }
-    self.postMessage(response)
+    post({ type: 'error', error: describeFailure(err) })
   }
 }
 

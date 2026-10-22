@@ -207,6 +207,32 @@ describe('restoreBackup — mesclar', () => {
     expect((await db.decks.get('d1'))!.name).toBe('Inglês')
   })
 
+  it.each([
+    ['21 parâmetros', Array.from({ length: 21 }, (_, i) => 0.3 + i / 10)],
+    ['19 parâmetros', Array.from({ length: 19 }, (_, i) => 0.3 + i / 10)],
+  ])('restaura o baralho com %s do FSRS e a data da otimização', async (_caso, parameters) => {
+    const file = await backupOf({
+      decks: [makeDeck({ fsrsParams: parameters, paramsOptimizedAt: 7000 })],
+      cards: [makeCard()],
+    })
+
+    await restore(file)
+
+    const deck = (await db.decks.get('d1'))!
+    expect(deck.fsrsParams).toEqual(parameters)
+    expect(deck.paramsOptimizedAt).toBe(7000)
+  })
+
+  it('restaura o baralho sem parâmetros do FSRS, vindo de um backup anterior à otimização', async () => {
+    const file = await backupOf({ decks: [makeDeck()], cards: [makeCard()] })
+
+    await restore(file)
+
+    const deck = (await db.decks.get('d1'))!
+    expect(deck.fsrsParams).toBeUndefined()
+    expect(deck.paramsOptimizedAt).toBeUndefined()
+  })
+
   it('preserva o cartão local mais recente ao mesclar', async () => {
     const file = await backupOf({ decks: [makeDeck()], cards: [makeCard({ sentence: 'do arquivo', updatedAt: 500 })] })
     await db.cards.add(makeCard({ sentence: 'do aparelho', updatedAt: 900, dirty: 0 }))

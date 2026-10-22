@@ -6,7 +6,7 @@ Diferente de um flashcard tradicional, o Lingo trata cada cartão como uma frase
 
 ## Principais recursos
 
-- **Agendamento com FSRS** (`ts-fsrs`, retenção alvo de 0,90) e avaliação binária simples: *Errei* ou *Acertei*.
+- **Agendamento com FSRS-6** (`ts-fsrs` 5, retenção alvo de 0,90) e avaliação binária simples: *Errei* ou *Acertei*.
 - **Estudo offline-first** — cartões, histórico e estado ficam no navegador (Dexie/IndexedDB); revisão inteira sem rede.
 - **Áudio automático** ao abrir o cartão, com *Repetir* e *Devagar*, e velocidade de narração ajustável.
 - **Modo "ouvir primeiro"** — a frase escrita fica escondida até você responder, treinando compreensão de ouvido.
@@ -18,7 +18,7 @@ Diferente de um flashcard tradicional, o Lingo trata cada cartão como uma frase
 - **Múltiplos baralhos**, com troca rápida, e exclusão de cartões e baralhos.
 - **Backup e restauração** em um arquivo `.zip` — leva baralhos, cartões, histórico e as gravações da sua voz (as narrações são opcionais), e volta mesclando ou substituindo o conteúdo do aparelho.
 - **Conta opcional** (email e senha) — sincroniza baralhos, cartões e histórico entre aparelhos via Supabase (Postgres + RLS); sem conta, o app funciona 100% offline igual antes.
-- **Otimizador do FSRS** rodando em Web Worker (wasm) sobre o seu próprio histórico.
+- **Otimizador do FSRS-6** rodando em Web Worker (wasm) sobre o seu próprio histórico, offline e com progresso em tempo real; Ajustes mostra a versão do FSRS e se o baralho usa parâmetros padrão ou otimizados.
 - **Voz neural opcional** (TTS em nuvem) com MP3 em cache local; sem chave configurada, usa a voz do navegador.
 
 ## Como rodar
@@ -62,6 +62,7 @@ src/
     db.ts          Schema Dexie (baralhos, cartões, histórico, áudio)
     backup*.ts     Backup em ZIP e restauração (formato, geração, plano, aplicação)
     scheduler.ts   Wrapper do ts-fsrs, fila do dia e limite de novos cartões
+    fsrsConfig.ts  Configuração do FSRS-6: passos de aprendizado, validação e descrição dos parâmetros
     audio.ts       SpeechProvider (voz neural | voz do navegador), com fallback
     enrich.ts      Cliente de /api/enrich + validação Zod
     ankiImport.ts  Leitura de .apkg (JSZip + sql.js)
@@ -70,7 +71,7 @@ src/
     sync.ts        Pull/push incremental contra o Postgres, LWW por linha
     auth.ts        Conta, adoção de dados locais ao entrar/cadastrar
     supabase.ts    Cliente Supabase sob import dinâmico (só quem usa conta baixa)
-    optimizer.ts   Preparo do histórico e chamada do worker
+    optimizer.ts   Preparo do histórico, chamada do worker e progresso (optimizerWorker/optimizerProgress)
   contexts/        DeckContext (baralho ativo) e AuthContext (sessão, sync)
   screens/         Home, Review, AddCard, Import, Cards, Progress, Settings, Account
   components/      Waveform, MarkableField, MarkedText, VoiceCompare, Heatmap, DeckSwitcher

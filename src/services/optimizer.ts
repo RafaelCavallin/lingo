@@ -1,18 +1,17 @@
 import { db, liveCards, type Deck } from './db'
+import { isValidOptimizedParameters } from './fsrsConfig'
 import { toTrainingItems, type TimedRating } from './optimizerHistory'
 import { applyFsrsParameters } from './scheduler'
-import type { OptimizeRequest, OptimizeResponse } from '../workers/optimizer.worker'
+import { computeInWorker, type ComputeOptions } from './optimizerWorker'
+import type { OptimizeRequest } from '../workers/optimizer.worker'
 
 /** Abaixo disto o resultado é ruído: os parâmetros padrão são melhores. */
 export const MIN_REVIEWS = 400
 
 export class NotEnoughData extends Error {}
 
-/** O ts-fsrs 4 (FSRS-5) só aproveita esses tamanhos; os demais ele troca pelos padrões em silêncio. */
-const SCHEDULER_PARAMETER_COUNTS = [17, 19]
-
-export const INCOMPATIBLE_PARAMETERS_MESSAGE =
-  'O otimizador gerou parâmetros de uma versão do FSRS que o agendamento ainda não usa. Nada foi alterado.'
+export const INVALID_PARAMETERS_MESSAGE =
+  'O otimizador devolveu parâmetros inválidos. Nada foi alterado.'
 
 export async function reviewCount(deckId: string): Promise<number> {
   return db.reviewLogs.where('deckId').equals(deckId).count()
@@ -44,35 +43,23 @@ async function buildHistory(deck: Deck): Promise<OptimizeRequest> {
   return toTrainingItems(histories)
 }
 
-function computeInWorker(worker: Worker, request: OptimizeRequest): Promise<number[]> {
-  return new Promise<number[]>((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error('O otimizador demorou demais.')), 180_000)
-    worker.onmessage = (e: MessageEvent<OptimizeResponse>) => {
-      clearTimeout(timeout)
-      e.data.ok ? resolve(e.data.parameters) : reject(new Error(e.data.error))
-    }
-    worker.onerror = () => {
-      clearTimeout(timeout)
-      reject(new Error('O otimizador não pôde ser carregado.'))
-    }
-    worker.postMessage(request)
-  })
-}
+export type OptimizeOptions = ComputeOptions
 
 /**
  * Reaprende os parâmetros do FSRS a partir do seu histórico e passa a usá-los.
  * O agendamento dos cartões existentes não é reescrito: os novos intervalos
  * valem a partir da próxima revisão de cada um.
  */
-export async function optimize(deck: Deck): Promise<number[]> {
+export async function optimize(deck: Deck, options: OptimizeOptions = {}): Promise<number[]> {
   const request = await buildHistory(deck)
   const worker = new Worker(new URL('../workers/optimizer.worker.ts', import.meta.url), {
     type: 'module',
   })
   try {
-    const parameters = await computeInWorker(worker, request)
-    if (!SCHEDULER_PARAMETER_COUNTS.includes(parameters.length)) {
-      throw new Error(INCOMPATIBLE_PARAMETERS_MESSAGE)
+    options.onProgress?.(null)
+    const parameters = await computeInWorker(worker, request, options)
+    if (!isValidOptimizedParameters(parameters)) {
+      throw new Error(INVALID_PARAMETERS_MESSAGE)
     }
     await db.decks.update(deck.id, {
       fsrsParams: parameters,

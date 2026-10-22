@@ -4,6 +4,7 @@ export interface ProgressBarProps {
   label: string
   done: number | null
   total: number | null
+  counter?: string
   className?: string
 }
 
@@ -11,8 +12,8 @@ export interface ProgressBarProps {
  * Barra de progresso genérica — determinada ou indeterminada. `total` nulo ou
  * zero vira uma faixa deslizante sem contador, em vez de mentir "0 / 0".
  */
-export function ProgressBar({ label, done, total, className = '' }: ProgressBarProps) {
-  const meter = progressMeter({ label, done, total })
+export function ProgressBar({ label, done, total, counter, className = '' }: ProgressBarProps) {
+  const meter = progressMeter({ label, done, total, counter })
   const fillClass = meter.determinate
     ? 'h-full bg-signal transition-all'
     : 'h-full w-2/5 bg-signal progress-indeterminate'

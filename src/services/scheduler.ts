@@ -1,15 +1,12 @@
-import { fsrs, generatorParameters, createEmptyCard, Rating, State } from 'ts-fsrs'
+import { createEmptyCard, Rating, State } from 'ts-fsrs'
+import { createScheduler } from './fsrsConfig'
 import { db, liveCards, uid, type Card, type Deck, type ReviewLog } from './db'
 
-let f = fsrs(generatorParameters({ request_retention: 0.9, enable_fuzz: true }))
+let f = createScheduler()
 
 /** Aplica os parâmetros otimizados sobre o histórico real do usuário. */
 export function applyFsrsParameters(w?: number[]) {
-  f = fsrs(
-    generatorParameters(
-      w && w.length ? { request_retention: 0.9, enable_fuzz: true, w } : { request_retention: 0.9, enable_fuzz: true },
-    ),
-  )
+  f = createScheduler(w)
 }
 
 /** Único ponto de tradução entre a UI binária e o algoritmo. */
@@ -62,6 +59,7 @@ export async function answer(card: Card, rating: BinaryRating, durationMs: numbe
       difficulty: card.difficulty,
       elapsed_days: card.elapsedDays,
       scheduled_days: card.scheduledDays,
+      learning_steps: 0,
       reps: card.reps,
       lapses: card.lapses,
       state: card.state,

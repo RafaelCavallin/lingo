@@ -105,6 +105,28 @@ afterEach(async () => {
   await resetDb()
 })
 
+describe('createBackup — parâmetros do FSRS', () => {
+  it.each([
+    ['21', 21],
+    ['19', 19],
+  ])('leva no manifesto os %s parâmetros do baralho com a data da otimização', async (_size, length) => {
+    const parameters = Array.from({ length }, (_, i) => 0.3 + i / 10)
+    await db.decks.update('d1', { fsrsParams: parameters, paramsOptimizedAt: 7000 })
+
+    const { manifest } = await readZip(await createBackup({ includeNarrations: false }))
+
+    expect(manifest.decks[0].fsrsParams).toEqual(parameters)
+    expect(manifest.decks[0].paramsOptimizedAt).toBe(7000)
+  })
+
+  it('leva o baralho sem parâmetros como ausente', async () => {
+    const { manifest } = await readZip(await createBackup({ includeNarrations: false }))
+
+    expect(manifest.decks[0].fsrsParams).toBeUndefined()
+    expect(manifest.decks[0].paramsOptimizedAt).toBeUndefined()
+  })
+})
+
 describe('createBackup', () => {
   it('gera um ZIP com manifesto válido e o arquivo de cada gravação', async () => {
     await db.audioBlobs.add(makeRecording())

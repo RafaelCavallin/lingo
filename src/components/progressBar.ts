@@ -17,8 +17,10 @@ export function progressMeter(input: {
   label: string
   done: number | null
   total: number | null
+  /** Texto que substitui o "feito / total" — vale nos dois modos. */
+  counter?: string
 }): ProgressMeter {
-  const { label, done, total } = input
+  const { label, done, total, counter } = input
   if (total === null || total <= 0 || done === null) {
     return {
       determinate: false,
@@ -26,7 +28,7 @@ export function progressMeter(input: {
       ariaValueMin: null,
       ariaValueMax: null,
       ariaValueNow: null,
-      counter: null,
+      counter: counter ?? null,
       ariaValueText: label,
     }
   }
@@ -38,7 +40,7 @@ export function progressMeter(input: {
     ariaValueMin: 0,
     ariaValueMax: total,
     ariaValueNow: clampedDone,
-    counter: `${clampedDone} / ${total}`,
+    counter: counter ?? `${clampedDone} / ${total}`,
     ariaValueText: `${clampedDone} de ${total}`,
   }
 }

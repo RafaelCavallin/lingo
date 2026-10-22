@@ -185,6 +185,16 @@ describe('parseManifest', () => {
     expect(parsed?.cards[0].lastReview).toBeUndefined()
   })
 
+  it.each([[21], [19], [17]])('preserva um vetor de %s parâmetros do FSRS ao ler o arquivo', (length) => {
+    const parameters = Array.from({ length }, (_, i) => 0.3 + i / 10)
+    const raw = makeManifest({ decks: [{ ...makeDeck(), fsrsParams: parameters, paramsOptimizedAt: 7000 }] })
+
+    const parsed = parseManifest(raw)
+
+    expect(parsed?.decks[0].fsrsParams).toEqual(parameters)
+    expect(parsed?.decks[0].paramsOptimizedAt).toBe(7000)
+  })
+
   it('preserva a conta gravada no arquivo', () => {
     const parsed = parseManifest(makeManifest({ accountId: 'user-1' }))
 

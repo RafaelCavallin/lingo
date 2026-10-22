@@ -57,16 +57,15 @@ export default defineConfig({
         // /api/* nunca é cacheado: sempre rede, com erro tratado na UI.
         navigateFallbackDenylist: [/^\/api/],
         // O wasm do sql.js só serve para importar do Anki: fica fora do
-        // precache para não pesar na instalação do PWA. O JSZip, ao contrário,
-        // fica dentro: backup e restauração têm de funcionar offline, e um
-        // chunk ausente do precache exigiria rede na primeira vez.
+        // precache para não pesar na instalação do PWA. O JSZip e o otimizador
+        // (worker, wasm do fsrs-browser e workerHelpers), ao contrário, ficam
+        // dentro: backup, restauração e otimização têm de funcionar offline, e
+        // um chunk ausente do precache exigiria rede na primeira vez.
         // Fora do precache: só quem importa do Anki ou abre o progresso baixa.
         globIgnores: [
-          '**/*.wasm',
+          '**/sql-wasm*.wasm',
           '**/ankiImport-*.js',
           '**/Progress-*.js',
-          '**/optimizer*',
-          '**/workerHelpers*',
           // Só o subconjunto latino é usado por um app de português e inglês.
           '**/*-{vietnamese,cyrillic,cyrillic-ext,greek,greek-ext}-*.woff2',
         ],
