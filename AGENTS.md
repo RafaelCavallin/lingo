@@ -78,6 +78,15 @@ Atenção ao mapa de branches: `prod` é a branch de produção, `des` é a de d
 
 Nada sobe para produção automaticamente, e essa é uma decisão deliberada: **só se promove para a `prod` o que já foi validado 100% no preview da `des`**. Push na `des` não promove nada, merge na `main` não promove nada — produção só muda quando alguém mergeia na `prod` à mão. Migration em produção também é sempre manual e vem antes do deploy. O roteiro completo está em [atualizar-producao.md](atualizar-producao.md); nenhum agente deve executá-lo por conta própria.
 
+### Como o deploy acontece
+
+O deploy é feito pelo GitHub Actions com a Vercel CLI, no job `deploy` do `.github/workflows/ci.yml`, e só roda depois que `lint`, `build` e `test:coverage` passarem. A integração Git da Vercel continua conectada, mas os deploys automáticos dela estão desligados (`git.deploymentEnabled: false` no `vercel.json`).
+
+- Push na `prod` → deploy de produção. Push em qualquer outra branch → preview, com as variáveis do escopo Preview.
+- Pull request não faz deploy, só roda o CI.
+- O job usa os secrets `VERCEL_TOKEN`, `VERCEL_ORG_ID` e `VERCEL_PROJECT_ID` do repositório no GitHub. O token pertence à conta do Rafael; se expirar, o deploy falha no passo `vercel pull`.
+- Para refazer um deploy sem commit novo, rode de novo o workflow na aba Actions (ou `gh run rerun <id>`).
+
 O `.env` versionado aponta para o local de propósito: é a rede de segurança caso o `.env.local` seja apagado.
 
 Consequências práticas:
@@ -113,7 +122,7 @@ npm run build        # tsc -b (type-check) + vite build de produção
 npm run preview       # serve o build de produção localmente, para conferir antes de deployar
 ```
 
-`npm run build` falha se houver erro de tipo — é o mesmo check que roda no CI (`.github/workflows/ci.yml`, junto de `lint`/`test:coverage`) e no deploy da Vercel.
+`npm run build` falha se houver erro de tipo — é o mesmo check que roda no CI (`.github/workflows/ci.yml`, junto de `lint`/`test:coverage`).
 
 ## Testes
 

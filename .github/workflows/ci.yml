@@ -22,3 +22,40 @@ jobs:
       - run: npm run build
 
       - run: npm run test:coverage
+
+  # Deploy na Vercel só depois de lint, build e testes passarem.
+  # A branch `prod` vira produção; qualquer outra vira preview.
+  # Os deploys automáticos da integração Git estão desligados em vercel.json.
+  deploy:
+    needs: build
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: vercel-${{ github.ref }}
+      cancel-in-progress: true
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      DEPLOY_ENV: ${{ github.ref_name == 'prod' && 'production' || 'preview' }}
+      VERCEL_CLI_VERSION: 65.7.0
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm install --global vercel@${VERCEL_CLI_VERSION}
+
+      - name: Baixa variáveis e configurações do ambiente
+        run: vercel pull --yes --environment="$DEPLOY_ENV" --git-branch="$GITHUB_REF_NAME"
+
+      - name: Build
+        run: vercel build --environment="$DEPLOY_ENV"
+
+      - name: Deploy
+        run: |
+          url=$(vercel deploy --prebuilt --environment="$DEPLOY_ENV")
+          echo "Deploy ($DEPLOY_ENV): $url" >> "$GITHUB_STEP_SUMMARY"

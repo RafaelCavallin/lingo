@@ -69,11 +69,11 @@ git merge des
 git push origin prod
 ```
 
-O push na `prod` é o que dispara o deploy de produção na Vercel. Volte para a `des` depois (`git checkout des`) para não seguir trabalhando na branch de produção.
+O push na `prod` é o que dispara o deploy de produção: o job `deploy` do `.github/workflows/ci.yml` publica na Vercel pela CLI, mas só depois de lint, build e testes passarem. Volte para a `des` depois (`git checkout des`) para não seguir trabalhando na branch de produção.
 
 ## 4. Acompanhar o deploy
 
-No dashboard da Vercel, o deploy da `prod` deve terminar com "Ready". Ele roda `npm run build`, então erro de tipo derruba o deploy — e produção continua na versão anterior, que é o comportamento desejado.
+No GitHub Actions (`gh run watch` ou a aba Actions), o workflow CI do push na `prod` deve ficar verde; o resumo do job `deploy` traz a URL publicada. No dashboard da Vercel, o deploy deve aparecer como "Ready". Se lint, build ou testes falharem, o deploy nem começa — e produção continua na versão anterior, que é o comportamento desejado.
 
 ## 5. Conferir em produção
 
