@@ -1,7 +1,11 @@
 import Dexie, { type EntityTable } from 'dexie'
 import { State } from 'ts-fsrs'
 
-export type HintType = 'phrasal_verb' | 'false_cognate' | 'pronunciation' | 'custom'
+/** Fonte única dos tipos de dica: o tipo, os schemas de sync/backup e a
+ *  validação da IA saem daqui. */
+export const HINT_TYPES = ['phrasal_verb', 'idiom', 'false_cognate', 'pronunciation', 'custom'] as const
+
+export type HintType = (typeof HINT_TYPES)[number]
 
 export interface Hint {
   type: HintType

@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { Hint } from './db'
+import { HINT_TYPES, type Hint } from './db'
 import { EnrichUnavailable, postJson } from './apiJson'
 
 export { EnrichUnavailable }
@@ -11,7 +11,7 @@ const schema = z.object({
   hints: z
     .array(
       z.object({
-        type: z.enum(['phrasal_verb', 'false_cognate', 'pronunciation', 'custom']),
+        type: z.enum(HINT_TYPES),
         text: z.string().min(1).max(160),
       }),
     )

@@ -124,6 +124,21 @@ describe('parseManifest', () => {
     expect(parseManifest('backup')).toBeNull()
   })
 
+  it('aceita cartão com dica do tipo idiom', () => {
+    const hints: Card['hints'] = [{ type: 'idiom', text: 'break the ice = quebrar o gelo', source: 'user' }]
+
+    const parsed = parseManifest(makeManifest({ cards: [makeCard({ hints })] }))
+
+    expect(parsed?.cards[0].hints).toEqual(hints)
+    expect(parsed?.discarded).toBe(0)
+  })
+
+  it('descarta cartão com tipo de dica desconhecido', () => {
+    const raw = makeManifest({ cards: [makeCard({ hints: [{ type: 'slang', text: 'x', source: 'user' } as never] })] })
+
+    expect(parseManifest(raw)?.discarded).toBe(1)
+  })
+
   it('descarta cartão malformado sem invalidar o manifesto inteiro', () => {
     const raw = makeManifest({
       cards: [makeCard(), { id: 'c2', deckId: 'd1' }, makeCard({ id: 'c3' })],

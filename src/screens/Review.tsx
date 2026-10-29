@@ -204,10 +204,10 @@ export function Review({ deck, onDone }: { deck: Deck; onDone: () => void }) {
               <MarkedText text={card.translation} emphasis={card.translationEmphasisRanges} />
             </p>
             {card.hints.length > 0 && (
-              <ul className="mt-5 space-y-3">
+              <ul className="mt-5 space-y-4">
                 {card.hints.map((h, i) => (
-                  <li key={i} className="flex gap-3 text-sm text-muted">
-                    <span className="mt-[2px] font-mono text-[10px] uppercase tracking-wider text-signal">
+                  <li key={i} className="flex gap-3 text-base leading-relaxed text-muted">
+                    <span className="mt-[5px] shrink-0 font-mono text-xs uppercase tracking-wider text-signal">
                       {hintLabel(h.type)}
                     </span>
                     <span>{h.text}</span>
@@ -274,7 +274,7 @@ function AudioButton({
 }
 
 function hintLabel(t: string) {
-  return { phrasal_verb: 'phrasal', false_cognate: 'falso amigo', pronunciation: 'som', custom: 'nota' }[t] ?? 'nota'
+  return { phrasal_verb: 'phrasal', idiom: 'idiom', false_cognate: 'falso amigo', pronunciation: 'som', custom: 'nota' }[t] ?? 'nota'
 }
 
 function Shell({ children }: { children: React.ReactNode }) {

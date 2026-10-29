@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { Card, Deck, Hint, ReviewLog } from './db'
+import { HINT_TYPES, type Card, type Deck, type Hint, type ReviewLog } from './db'
 
 /**
  * Linha remota validada + o `synced_at` que a acompanha (cursor de pull).
@@ -12,7 +12,7 @@ export interface Parsed<T> {
 }
 
 const hint: z.ZodType<Hint> = z.object({
-  type: z.enum(['phrasal_verb', 'false_cognate', 'pronunciation', 'custom']),
+  type: z.enum(HINT_TYPES),
   text: z.string(),
   source: z.enum(['ai', 'user']),
 })

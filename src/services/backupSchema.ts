@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import type { AudioEntry } from './backupFormat'
-import type { Card, Deck, Hint, ReviewLog } from './db'
+import { HINT_TYPES, type Card, type Deck, type Hint, type ReviewLog } from './db'
 
 /**
  * `dirty` é ignorado na leitura e sempre devolvido como 0: o arquivo descreve
@@ -11,7 +11,7 @@ import type { Card, Deck, Hint, ReviewLog } from './db'
 const range = z.object({ start: z.number(), end: z.number() })
 
 const hint: z.ZodType<Hint> = z.object({
-  type: z.enum(['phrasal_verb', 'false_cognate', 'pronunciation', 'custom']),
+  type: z.enum(HINT_TYPES),
   text: z.string(),
   source: z.enum(['ai', 'user']),
 })

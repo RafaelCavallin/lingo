@@ -1,8 +1,11 @@
+import { useRef } from 'react'
 import { type Hint, type HintType } from '../services/db'
 import { SkeletonLines } from './Skeleton'
+import { useGrowToFit } from './useGrowToFit'
 
-const HINT_TYPES: { value: HintType; label: string }[] = [
+const HINT_OPTIONS: { value: HintType; label: string }[] = [
   { value: 'phrasal_verb', label: 'Phrasal verb' },
+  { value: 'idiom', label: 'Idiom' },
   { value: 'false_cognate', label: 'Falso amigo' },
   { value: 'pronunciation', label: 'Pronúncia' },
   { value: 'custom', label: 'Nota' },
@@ -38,7 +41,7 @@ export function HintsEditor({
 
       {hints.length === 0 && loading && (
         <div className="mt-3">
-          <SkeletonLines lines={2} lineHeight="2.25rem" gap="0.75rem" />
+          <SkeletonLines lines={2} lineHeight="6.75rem" gap="1rem" />
         </div>
       )}
       {hints.length === 0 && !loading && (
@@ -47,34 +50,14 @@ export function HintsEditor({
         </p>
       )}
       {hints.length > 0 && (
-        <ul className="mt-3 space-y-3">
+        <ul className="mt-3 space-y-4">
           {hints.map((h, i) => (
-            <li key={i} className="flex gap-2">
-              <select
-                value={h.type}
-                onChange={(e) => update(i, { type: e.target.value as HintType })}
-                className="rounded-lg border border-line bg-surface px-2 py-2 font-mono text-xs text-muted outline-none focus:border-signal"
-              >
-                {HINT_TYPES.map((t) => (
-                  <option key={t.value} value={t.value}>
-                    {t.label}
-                  </option>
-                ))}
-              </select>
-              <input
-                value={h.text}
-                onChange={(e) => update(i, { text: e.target.value })}
-                placeholder="look forward to = aguardar ansiosamente"
-                className="flex-1 rounded-lg border border-line bg-surface px-3 py-2 text-sm outline-none placeholder:text-muted/40 focus:border-signal"
-              />
-              <button
-                onClick={() => onChange(hints.filter((_, j) => j !== i))}
-                aria-label="Remover dica"
-                className="px-2 text-muted hover:text-miss"
-              >
-                ×
-              </button>
-            </li>
+            <HintRow
+              key={i}
+              hint={h}
+              onChange={(changes) => update(i, changes)}
+              onRemove={() => onChange(hints.filter((_, j) => j !== i))}
+            />
           ))}
         </ul>
       )}
@@ -82,3 +65,48 @@ export function HintsEditor({
   )
 }
 
+
+/** Uma dica: tipo e remover em cima, o texto embaixo na largura toda,
+ *  crescendo com o que for escrito. */
+function HintRow({
+  hint,
+  onChange,
+  onRemove,
+}: {
+  hint: Hint
+  onChange: (changes: Partial<Hint>) => void
+  onRemove: () => void
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null)
+  useGrowToFit(ref, hint.text)
+
+  return (
+    <li>
+      <div className="flex items-center justify-between">
+        <select
+          value={hint.type}
+          onChange={(e) => onChange({ type: e.target.value as HintType })}
+          aria-label="Tipo da dica"
+          className="rounded-lg border border-line bg-surface px-2 py-1.5 font-mono text-xs text-muted outline-none focus:border-signal"
+        >
+          {HINT_OPTIONS.map((t) => (
+            <option key={t.value} value={t.value}>
+              {t.label}
+            </option>
+          ))}
+        </select>
+        <button onClick={onRemove} aria-label="Remover dica" className="px-2 text-lg text-muted hover:text-miss">
+          ×
+        </button>
+      </div>
+      <textarea
+        ref={ref}
+        value={hint.text}
+        onChange={(e) => onChange({ text: e.target.value })}
+        rows={2}
+        placeholder="look forward to = aguardar ansiosamente"
+        className="mt-2 block w-full resize-none overflow-hidden rounded-lg border border-line bg-surface px-3 py-2.5 text-base leading-relaxed outline-none placeholder:text-muted/40 focus:border-signal"
+      />
+    </li>
+  )
+}

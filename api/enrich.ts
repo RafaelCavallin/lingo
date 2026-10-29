@@ -25,7 +25,8 @@ Receba uma frase em inglês e devolva:
    realmente útil para esta frase. Nunca invente conteúdo para preencher espaço.
 
 Tipos de dica:
-- "phrasal_verb": um phrasal verb ou expressão idiomática presente na frase, com o significado.
+- "phrasal_verb": um phrasal verb presente na frase, com o significado.
+- "idiom": uma expressão idiomática presente na frase, com o significado.
 - "false_cognate": uma palavra que parece com português mas significa outra coisa.
 - "pronunciation": uma pronúncia que surpreende quem lê pelo português.
 - "custom": uma observação de gramática ou uso que a frase ilustra bem.

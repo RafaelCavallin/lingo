@@ -41,6 +41,19 @@ describe('enrich', () => {
     })
   })
 
+  it('aceita dica do tipo idiom vinda da geração', async () => {
+    mockFetch(
+      jsonResponse({
+        translation: 'Vamos quebrar o gelo',
+        hints: [{ type: 'idiom', text: 'break the ice = quebrar o gelo' }],
+      }),
+    )
+
+    const result = await enrich("Let's break the ice")
+
+    expect(result.hints).toEqual([{ type: 'idiom', text: 'break the ice = quebrar o gelo', source: 'ai' }])
+  })
+
   it('envia a frase para /api/enrich', async () => {
     const fetchMock = mockFetch(jsonResponse({ translation: 'Eu desisti' }))
 

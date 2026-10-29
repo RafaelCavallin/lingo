@@ -94,6 +94,20 @@ describe('parseDeckRow', () => {
     expect(parsed.row.paramsOptimizedAt).toBe(5000)
   })
 
+  it('aceita dica do tipo idiom', () => {
+    const hints = [{ type: 'idiom', text: 'break the ice = quebrar o gelo', source: 'ai' }]
+
+    const parsed = parseCardRow({ ...validCardRow(), hints })
+
+    expect(parsed?.row.hints).toEqual(hints)
+  })
+
+  it('descarta linha com tipo de dica desconhecido', () => {
+    const hints = [{ type: 'slang', text: 'x', source: 'ai' }]
+
+    expect(parseCardRow({ ...validCardRow(), hints })).toBeNull()
+  })
+
   it('returns null for a malformed row', () => {
     const { name: _name, ...withoutName } = validDeckRow()
     expect(parseDeckRow(withoutName)).toBeNull()
