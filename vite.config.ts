@@ -34,6 +34,7 @@ export default defineConfig({
         'src/components/dueBadge.ts',
         'src/components/restoreResult.ts',
         'src/components/formatBytes.ts',
+        'src/components/loadMore.ts',
       ],
       exclude: ['**/*.test.ts'],
       thresholds: { statements: 80, branches: 80, functions: 80, lines: 80 },

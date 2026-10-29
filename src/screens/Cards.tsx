@@ -1,30 +1,21 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { deleteCard, liveCards, type Card, type Deck } from '../services/db'
 import { AsyncRegion } from '../components/AsyncRegion'
 import { MobileNav } from '../components/MobileNav'
-import { MarkedText } from '../components/MarkedText'
+import { CardRow } from '../components/CardRow'
+import { LoadMoreButton } from '../components/LoadMoreButton'
+import { CARDS_PAGE_SIZE, nextVisibleCount } from '../components/loadMore'
 import { CardsListSkeleton } from '../components/CardsListSkeleton'
 import { Skeleton } from '../components/Skeleton'
 import { usePendingIndicator } from '../components/usePendingIndicator'
 import { EditCard } from './EditCard'
 
-/**
- * Um deck importado do Anki chega com milhares de cartões. Renderizar todos
- * de uma vez trava o scroll; `content-visibility: auto` deixa o navegador
- * pular o layout de linhas fora da tela sem precisar de uma lib de
- * virtualização só para isto.
- */
-const ROW_STYLE = { contentVisibility: 'auto', containIntrinsicSize: '0 88px' } as const
-
-const PAGE_SIZE = 100
-
 export function Cards({ deck, onBack }: { deck: Deck; onBack: () => void }) {
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<Set<string>>(new Set())
-  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
+  const [visibleCount, setVisibleCount] = useState(CARDS_PAGE_SIZE)
   const [editing, setEditing] = useState<Card | null>(null)
-  const sentinelRef = useRef<HTMLLIElement>(null)
 
   const cards = useLiveQuery(() => liveCards(deck.id).reverse().sortBy('createdAt'), [deck.id])
 
@@ -41,22 +32,15 @@ export function Cards({ deck, onBack }: { deck: Deck; onBack: () => void }) {
   }, [cards, query])
 
   useEffect(() => {
-    setVisibleCount(PAGE_SIZE)
+    setVisibleCount(CARDS_PAGE_SIZE)
   }, [query, deck.id])
 
-  const hasMore = !!filtered && visibleCount < filtered.length
   const visible = filtered?.slice(0, visibleCount)
 
-  useEffect(() => {
-    if (!hasMore) return
-    const el = sentinelRef.current
-    if (!el) return
-    const observer = new IntersectionObserver((entries) => {
-      if (entries[0]?.isIntersecting) setVisibleCount((n) => n + PAGE_SIZE)
-    })
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [hasMore])
+  function loadMore() {
+    const total = filtered?.length ?? 0
+    setVisibleCount((n) => nextVisibleCount({ visible: n, total, step: CARDS_PAGE_SIZE }))
+  }
 
   function toggle(id: string) {
     setSelected((s) => {
@@ -152,47 +136,17 @@ export function Cards({ deck, onBack }: { deck: Deck; onBack: () => void }) {
               </p>
             )}
             {visible?.map((c) => (
-              <li key={c.id} style={ROW_STYLE} className="flex items-start gap-3 py-4">
-                <input
-                  type="checkbox"
-                  checked={selected.has(c.id)}
-                  onChange={() => toggle(c.id)}
-                  className="mt-1.5 h-4 w-4 shrink-0 accent-signal"
-                  aria-label="Selecionar cartão"
-                />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate font-display text-lg leading-snug">
-                    <MarkedText text={c.sentence} emphasis={c.emphasisRanges} />
-                  </p>
-                  <p className="mt-1 truncate text-sm text-muted">
-                    <MarkedText text={c.translation} emphasis={c.translationEmphasisRanges} />
-                  </p>
-                </div>
-                <button
-                  onClick={() => setEditing(c)}
-                  aria-label="Editar cartão"
-                  className="shrink-0 rounded-full border border-line px-3 py-1.5 font-mono text-xs uppercase tracking-wider text-muted transition hover:border-signal hover:text-signal"
-                >
-                  Editar
-                </button>
-                <button
-                  onClick={() => removeOne(c)}
-                  aria-label="Excluir cartão"
-                  className="shrink-0 rounded-full border border-line px-3 py-1.5 font-mono text-xs uppercase tracking-wider text-muted transition hover:border-miss hover:text-miss"
-                >
-                  Excluir
-                </button>
-              </li>
+              <CardRow
+                key={c.id}
+                card={c}
+                selected={selected.has(c.id)}
+                onToggle={toggle}
+                onEdit={setEditing}
+                onRemove={removeOne}
+              />
             ))}
-            {/* Não é espera de verdade: `setVisibleCount` é síncrono, então isto
-                é só o marcador que o IntersectionObserver observa para revelar
-                mais linhas — sem afirmar um carregamento que não acontece. */}
-            {hasMore && (
-              <li ref={sentinelRef} aria-hidden className="py-4 text-center text-xs text-muted/40">
-                ···
-              </li>
-            )}
           </ul>
+          <LoadMoreButton shown={visible?.length ?? 0} total={filtered?.length ?? 0} onLoadMore={loadMore} />
         </AsyncRegion>
       </main>
     </div>
