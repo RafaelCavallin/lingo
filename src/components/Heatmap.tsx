@@ -24,17 +24,20 @@ export function Heatmap({ counts }: { counts: Map<string, number> }) {
   // atual (a ponta mais recente), não os meses mais antigos. `useLayoutEffect`
   // aplica isso antes do paint — com `useEffect` dava para ver a grade
   // começar nos meses antigos e saltar para a direita.
+  // O `contain: inline-size` impede que os 560px do SVG virem a largura
+  // mínima dos pais flex — sem ele a grade alarga a página em vez de rolar.
   useLayoutEffect(() => {
     const el = scrollRef.current
     if (el) el.scrollLeft = el.scrollWidth
   }, [width])
 
   return (
-    <figure ref={scrollRef} className="overflow-x-auto">
+    <figure ref={scrollRef} className="w-full overflow-x-auto [contain:inline-size]">
       <svg
         width={width}
         height={height}
         viewBox={`0 0 ${width} ${height}`}
+        preserveAspectRatio="xMinYMid meet"
         role="img"
         aria-label={`Revisões por dia nos últimos 10 meses. Melhor dia: ${max} revisões.`}
         className="min-w-full"

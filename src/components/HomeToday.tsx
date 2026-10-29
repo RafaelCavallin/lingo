@@ -52,7 +52,7 @@ export function HomeToday({
         <button
           onClick={onProgress}
           aria-label="Ver progresso"
-          className="mt-14 rounded-xl border border-transparent p-2 text-left transition hover:border-line"
+          className="mt-14 block w-full rounded-xl border border-transparent p-2 text-left transition hover:border-line"
         >
           <Heatmap counts={byDay} />
           <span className="mt-2 block font-mono text-[10px] uppercase tracking-wider text-muted">
