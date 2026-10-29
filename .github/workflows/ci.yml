@@ -59,3 +59,21 @@ jobs:
         run: |
           url=$(vercel deploy --prebuilt --environment="$DEPLOY_ENV")
           echo "Deploy ($DEPLOY_ENV): $url" >> "$GITHUB_STEP_SUMMARY"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+        id: deploy
+
+      # Deploy feito pela CLI não ganha o endereço fixo da branch
+      # (lingo-git-<branch>-…), então ele é apontado aqui.
+      - name: Aponta o endereço da branch para o deploy novo
+        if: env.DEPLOY_ENV == 'preview'
+        env:
+          DEPLOY_URL: ${{ steps.deploy.outputs.url }}
+          VERCEL_TEAM_SLUG: rafaelcavallin89-3287s-projects
+        run: |
+          branch=$(echo "$GITHUB_REF_NAME" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+|-+$//g')
+          alias="lingo-git-${branch}-${VERCEL_TEAM_SLUG}.vercel.app"
+          if vercel alias set "$DEPLOY_URL" "$alias"; then
+            echo "Endereço da branch: https://$alias" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::warning::Não foi possível apontar $alias para o deploy novo."
+          fi

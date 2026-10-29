@@ -84,6 +84,7 @@ O deploy é feito pelo GitHub Actions com a Vercel CLI, no job `deploy` do `.git
 
 - Push na `prod` → deploy de produção. Push em qualquer outra branch → preview, com as variáveis do escopo Preview.
 - Pull request não faz deploy, só roda o CI.
+- Deploy feito pela CLI não ganha sozinho o endereço fixo da branch (`lingo-git-<branch>-…vercel.app`); um passo do job aponta esse endereço para o deploy de preview novo.
 - O job usa os secrets `VERCEL_TOKEN`, `VERCEL_ORG_ID` e `VERCEL_PROJECT_ID` do repositório no GitHub. O token pertence à conta do Rafael; se expirar, o deploy falha no passo `vercel pull`.
 - Para refazer um deploy sem commit novo, rode de novo o workflow na aba Actions (ou `gh run rerun <id>`).
 
