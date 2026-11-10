@@ -64,6 +64,9 @@ jobs:
 
       # Deploy feito pela CLI não ganha o endereço fixo da branch
       # (lingo-git-<branch>-…), então ele é apontado aqui.
+      # Usa a API em vez de `vercel alias set`: a CLI ignora o VERCEL_ORG_ID
+      # nesse comando, procura uma conta pessoal pelo token e falha com
+      # "User not found". Se falhar, o job falha: o preview ficaria velho.
       - name: Aponta o endereço da branch para o deploy novo
         if: env.DEPLOY_ENV == 'preview'
         env:
@@ -72,8 +75,13 @@ jobs:
         run: |
           branch=$(echo "$GITHUB_REF_NAME" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+|-+$//g')
           alias="lingo-git-${branch}-${VERCEL_TEAM_SLUG}.vercel.app"
-          if vercel alias set "$DEPLOY_URL" "$alias"; then
-            echo "Endereço da branch: https://$alias" >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "::warning::Não foi possível apontar $alias para o deploy novo."
+          api="https://api.vercel.com"
+          auth="Authorization: Bearer $VERCEL_TOKEN"
+          deployment_id=$(curl -fsS -H "$auth" "$api/v13/deployments/${DEPLOY_URL#https://}?teamId=$VERCEL_ORG_ID" | jq -r .id)
+          if ! curl -fsS -X POST -H "$auth" -H "Content-Type: application/json" \
+              -d "{\"alias\":\"$alias\"}" \
+              "$api/v2/deployments/$deployment_id/aliases?teamId=$VERCEL_ORG_ID" > /dev/null; then
+            echo "::error::Não foi possível apontar $alias para o deploy novo."
+            exit 1
           fi
+          echo "Endereço da branch: https://$alias" >> "$GITHUB_STEP_SUMMARY"
