@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # Único ponto de execução de SQL da skill criar-cenario-teste.
 #
-# Produção é inalcançável por desenho: o alvo é um NOME (local | dev), nunca
-# uma URL livre, e o endereço de cada um é montado aqui. Qualquer conexão,
+# Produção é inalcançável por desenho: o alvo é um NOME (só existe `dev`),
+# nunca uma URL livre, e o endereço é montado aqui. Qualquer conexão,
 # variável ou arquivo SQL que mencione o ref de produção é recusado antes de
 # abrir conexão.
 #
 # Uso:
-#   sql.sh <local|dev> <arquivo.sql> [arquivo2.sql ...]
-#   sql.sh <local|dev> -c "<sql>"
+#   sql.sh dev <arquivo.sql> [arquivo2.sql ...]
+#   sql.sh dev -c "<sql>"
 #
 # Os helpers (references/helpers.sql) são carregados antes de tudo, e o
 # conjunto roda numa transação única: um erro no meio desfaz o cenário inteiro.
@@ -20,20 +20,17 @@
 set -euo pipefail
 
 readonly PROD_REF="uglvzvfgrnzoyfeotter"
-readonly DEV_REF="jmswqnwghtlpxsvellar"
+readonly DEV_REF="dufnekbwxjklsugkvnve"
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly HELPERS="$SCRIPT_DIR/../references/helpers.sql"
 
 recusar() { echo "RECUSADO: $*" >&2; exit 3; }
-uso() { echo "uso: sql.sh <local|dev> <arquivo.sql>... | sql.sh <local|dev> -c \"<sql>\"" >&2; exit 2; }
+uso() { echo "uso: sql.sh dev <arquivo.sql>... | sql.sh dev -c \"<sql>\"" >&2; exit 2; }
 
 [ $# -ge 2 ] || uso
 alvo=$1; shift
 
 case "$alvo" in
-  local)
-    host=127.0.0.1; port=54322; user=postgres; export PGPASSWORD=postgres
-    ;;
   dev)
     [ -n "${LINGO_DEV_DB_PASSWORD:-}" ] \
       || recusar "defina LINGO_DEV_DB_PASSWORD no shell (nunca em arquivo) para usar o alvo dev"
@@ -45,7 +42,7 @@ case "$alvo" in
     case "$host $user" in *"$DEV_REF"*) ;; *) recusar "host/usuário do dev não contém o ref $DEV_REF" ;; esac
     ;;
   *)
-    recusar "alvo '$alvo' — só existem 'local' e 'dev'"
+    recusar "alvo '$alvo' — só existe 'dev' (não há mais Supabase local)"
     ;;
 esac
 

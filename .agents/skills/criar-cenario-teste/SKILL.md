@@ -1,7 +1,7 @@
 ---
 name: criar-cenario-teste
-description: Cenário de teste — monte, altere ou desmonte massas de dados no banco de TESTES (Supabase local ou lingo-dev), criando contas @lingo.test, decks, cartões em qualquer estado do FSRS e histórico de revisões, para validar uma tela ou fluxo. Nunca toca produção e nunca usa IA para preencher campos (tradução, dicas, fonética vêm de um catálogo fixo, do usuário ou de placeholders). Use quando o usuário pedir para criar, popular, preparar, alterar, excluir ou limpar dados/cenários/massa de teste no banco. Não use para testes automatizados em Vitest (eles usam o fakeSupabase), nem para migrations de schema (skill supabase), nem para dados só do navegador sem conta.
-argument-hint: o que o cenário precisa ter (e o alvo, local ou dev)
+description: Cenário de teste — monte, altere ou desmonte massas de dados no banco de TESTES (lingo-dev), criando contas @lingo.test, decks, cartões em qualquer estado do FSRS e histórico de revisões, para validar uma tela ou fluxo. Nunca toca produção e nunca usa IA para preencher campos (tradução, dicas, fonética vêm de um catálogo fixo, do usuário ou de placeholders). Use quando o usuário pedir para criar, popular, preparar, alterar, excluir ou limpar dados/cenários/massa de teste no banco. Não use para testes automatizados em Vitest (eles usam o fakeSupabase), nem para migrations de schema (skill supabase), nem para dados só do navegador sem conta.
+argument-hint: o que o cenário precisa ter
 ---
 
 O argumento descreve o cenário (ex.: "conta com 2 decks, 30 cartões novos e 5 vencidos ontem"). Sem argumento, pergunte o que o cenário precisa permitir testar antes de qualquer outra coisa.
@@ -10,7 +10,7 @@ Esta skill escreve direto no Postgres de um banco de **testes** para montar uma 
 
 ## Regras inegociáveis
 
-1. **Só banco de testes.** Os alvos são `local` (Docker, `127.0.0.1:54322`) e `dev` (`lingo-dev`, ref `jmswqnwghtlpxsvellar`). Produção (`supabase-gray-compass`, ref `uglvzvfgrnzoyfeotter`) é proibida, seja qual for o pedido. Se o usuário pedir dados em produção, recuse e aponte o `atualizar-producao.md`.
+1. **Só banco de testes.** O único alvo é `dev` (`lingo-dev`, ref `dufnekbwxjklsugkvnve`), o mesmo banco que o app usa rodando local e no preview da `des`. Produção (`supabase-gray-compass`, ref `uglvzvfgrnzoyfeotter`) é proibida, seja qual for o pedido. Se o usuário pedir dados em produção, recuse e aponte o `atualizar-producao.md`.
 2. **Todo SQL passa por `./scripts/sql.sh`.** É o único caminho. O alvo é um nome, nunca uma URL, e o script recusa qualquer coisa que cite o ref de produção. Não use `psql` solto, `npx supabase db … --linked` (o link deste repositório aponta para **produção**), o MCP do Supabase, o Studio de um projeto hospedado, nem as credenciais de `.env.vercel-prod.bak`.
 3. **Sem IA para preencher dados.** Frase, tradução, fonética e dicas entram literais no SQL e vêm só de: (a) texto que o usuário der, (b) `./references/frases.md`, (c) placeholders numerados. Nunca chame `/api/enrich`, nunca suba `vercel dev` para isso, nunca clique em "gerar tradução" no app, e não invente tradução, fonética nem dica na hora.
 4. **Só contas `@lingo.test`.** Os helpers recusam qualquer outro e-mail. Mexer numa conta que não seja de teste exige pedido explícito do usuário, nominal, na conversa.
@@ -18,13 +18,11 @@ Esta skill escreve direto no Postgres de um banco de **testes** para montar uma 
 
 ## Fluxo
 
-1. **Entender** — descubra o que o cenário precisa permitir testar e em qual alvo. O padrão é `local`; use `dev` só se o usuário pedir (para testar no preview da `des`). Leia `./references/helpers.sql` para conhecer as funções. Se o cenário servir a uma funcionalidade em `tasks/prd-*/`, leia o PRD/TechSpec dela para acertar os casos.
-   **Conclua quando:** souber o alvo, a conta, os decks/cartões/revisões necessários e o estado de cada cartão.
+1. **Entender** — descubra o que o cenário precisa permitir testar. Leia `./references/helpers.sql` para conhecer as funções. Se o cenário servir a uma funcionalidade em `tasks/prd-*/`, leia o PRD/TechSpec dela para acertar os casos.
+   **Conclua quando:** souber a conta, os decks/cartões/revisões necessários e o estado de cada cartão.
 
-2. **Preparar o alvo**
-   - `local`: confira com `npx supabase status`. Se não estiver no ar, suba com `npx supabase start` e anote que **você** subiu (para derrubar no fim). Portas e conflitos: "Com Supabase local" no `AGENTS.md`.
-   - `dev`: peça ao usuário para exportar `LINGO_DEV_DB_PASSWORD` no próprio terminal (sem colar a senha na conversa nem gravá-la em arquivo). Se a conexão direta falhar por IPv6, ele exporta também `LINGO_DEV_DB_HOST`/`LINGO_DEV_DB_USER` do pooler (o usuário do pooler é `postgres.jmswqnwghtlpxsvellar`). O projeto hiberna depois de uma semana sem uso; se não responder, peça para despausar no dashboard.
-   **Conclua quando:** `./scripts/sql.sh <alvo> -c "select 1"` responder.
+2. **Preparar o alvo** — peça ao usuário para exportar `LINGO_DEV_DB_PASSWORD` no próprio terminal (sem colar a senha na conversa nem gravá-la em arquivo). Se a conexão direta falhar por IPv6, ele exporta também `LINGO_DEV_DB_HOST`/`LINGO_DEV_DB_USER` do pooler (o usuário do pooler é `postgres.dufnekbwxjklsugkvnve`). O projeto hiberna depois de uma semana sem uso; se não responder, peça para despausar no dashboard.
+   **Conclua quando:** `./scripts/sql.sh dev -c "select 1"` responder.
 
 3. **Escrever o cenário** — crie `tasks/cenario-<slug>/` (slug em kebab-case e em português; se a pasta existir, acrescente `-2`, `-3`…) com:
    - `aplicar.sql`: começa com `select pg_temp.apagar_usuario_teste(:'email');` para ser idempotente, cria a conta e os registros e termina com `select * from pg_temp.resumo(:'email');`;
@@ -35,13 +33,13 @@ Esta skill escreve direto no Postgres de um banco de **testes** para montar uma 
    Se o cenário for de uma funcionalidade com pasta `tasks/prd-<slug>/`, grave em `tasks/prd-<slug>/cenarios/<slug-do-cenario>/`.
    **Conclua quando:** os arquivos estiverem salvos e todos os textos tiverem origem registrada no `cenario.md`.
 
-4. **Aplicar** — `./scripts/sql.sh <alvo> tasks/cenario-<slug>/aplicar.sql`. Tudo roda numa transação só: se der erro, nada fica pela metade. Corrija e rode de novo.
+4. **Aplicar** — `./scripts/sql.sh dev tasks/cenario-<slug>/aplicar.sql`. Tudo roda numa transação só: se der erro, nada fica pela metade. Corrija e rode de novo.
    **Conclua quando:** a saída de `pg_temp.resumo` bater com o estado esperado; cole-a no `cenario.md`.
 
-5. **Conferir no app (quando o teste for de interface)** — suba o app conforme "Como um agente sobe o app" no `AGENTS.md` (`local` → `npm run dev -- --port <porta livre 5100–5199>`; `dev` → a URL de preview da `des`) e use a skill `agent-browser` numa **sessão limpa**: o IndexedDB guarda a cópia da última conta, e um perfil reaproveitado mistura dados ou abre o diálogo de mesclar contas. Entre com a conta do cenário; o sync do login traz tudo. Se já estiver logado, recarregue a página ou use Ajustes → **Sincronizar agora**.
+5. **Conferir no app (quando o teste for de interface)** — suba o app conforme "Como um agente sobe o app" no `AGENTS.md` (`npm run dev -- --port <porta livre 5100–5199>` ou a URL de preview da `des`; os dois usam o mesmo banco) e use a skill `agent-browser` numa **sessão limpa**: o IndexedDB guarda a cópia da última conta, e um perfil reaproveitado mistura dados ou abre o diálogo de mesclar contas. Entre com a conta do cenário; o sync do login traz tudo. Se já estiver logado, recarregue a página ou use Ajustes → **Sincronizar agora**.
    **Conclua quando:** a tela mostrar o que o cenário promete, ou a divergência tiver sido explicada ao usuário.
 
-6. **Relatar e encerrar** — diga ao usuário, em poucas linhas, a conta e a senha, o alvo, o resumo e o caminho do `cenario.md`. Derrube só o que você subiu (app e, se foi você quem subiu, `npx supabase stop`, nunca com `--no-backup`) e confirme que as portas foram liberadas. Não faça commit sem pedido explícito.
+6. **Relatar e encerrar** — diga ao usuário, em poucas linhas, a conta e a senha, o resumo e o caminho do `cenario.md`. Derrube só o que você subiu (o app) e confirme que as portas foram liberadas. Não faça commit sem pedido explícito.
 
 ## Helpers (resumo)
 
@@ -49,7 +47,7 @@ Todos recebem o e-mail da conta de teste como primeiro argumento. Intervalos sã
 
 | Função | O que faz |
 | --- | --- |
-| `pg_temp.usuario_teste(email, senha)` | cria a conta já confirmada (login imediato, sem Inbucket); idempotente |
+| `pg_temp.usuario_teste(email, senha)` | cria a conta já confirmada (login imediato, sem e-mail de confirmação); idempotente |
 | `pg_temp.apagar_usuario_teste(email)` | apaga a conta e, em cascata, tudo dela (limpeza de cenário) |
 | `pg_temp.criar_deck(email, nome, …)` | deck; opcionais: `p_novos_por_dia`, `p_limite_jovens`, `p_ouvir_primeiro`, `p_voz`, `p_velocidade`, `p_criado` |
 | `pg_temp.deck(email, nome)` | id do deck vivo com esse nome |

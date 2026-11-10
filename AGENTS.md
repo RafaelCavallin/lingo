@@ -15,13 +15,8 @@ Guia rápido para qualquer agente/LLM trabalhando neste repositório. Para a exp
 | --- | --- | --- |
 | Frontend (Vite dev server) | `5173` | `npm run dev` |
 | Frontend + funções `api/` juntas | `3000` (padrão da Vercel CLI) | `npx vercel dev` |
-| Supabase local — API/PostgREST | `54321` | `npx supabase start` |
-| Supabase local — Postgres | `54322` | `npx supabase start` |
-| Supabase local — Studio (UI) | `54323` | `npx supabase start` |
-| Supabase local — Inbucket (e-mails de teste) | `54324` | `npx supabase start` |
-| Supabase local — Auth/GoTrue | `54327` | `npx supabase start` |
 
-Em produção, o frontend + `api/` são deployados juntos na Vercel; o banco é um projeto Supabase hospedado (não o local acima).
+Não há Supabase local em Docker: em desenvolvimento o banco é o projeto hospedado `lingo-dev` (ver "Isolamento entre desenvolvimento e produção"). Em produção, o frontend + `api/` são deployados juntos na Vercel e o banco é outro projeto hospedado.
 
 ## Como rodar
 
@@ -42,28 +37,22 @@ npx vercel dev       # sobe frontend + api/ juntos, http://localhost:3000
 
 Requer `.env` preenchido a partir de `.env.example` (ver seção abaixo). Sem isso as rotas voltam 501 e o app cai de volta nos fallbacks locais (voz do navegador, sem tradução automática) — não é um erro fatal.
 
-### Com Supabase local (contas e sincronização)
+### Com contas e sincronização
 
-```bash
-npx supabase start   # sobe Postgres + Auth + Studio locais (ver portas acima)
-npx supabase stop    # derruba; os dados ficam salvos no volume do Docker
-```
+Não há nada para subir: `npm run dev` e `npx vercel dev` já falam com o `lingo-dev`, porque o `.env.local` tem `VITE_SUPABASE_URL` e `VITE_SUPABASE_PUBLISHABLE_KEY` dele (Project Settings → API Keys, no dashboard). Tabelas e usuários se inspecionam no dashboard do `lingo-dev`.
 
-`start` já aplica as migrations de `supabase/migrations/` sozinho (`db.migrations.enabled = true` no `config.toml`) — `db push` só é necessário contra um projeto hospedado. Para zerar o banco e reaplicar tudo do zero, use `npx supabase db reset`.
-
-`VITE_SUPABASE_URL` e `VITE_SUPABASE_PUBLISHABLE_KEY` já vêm preenchidos com os valores locais (ver a seção abaixo); reimprima-os a qualquer momento com `npx supabase status`.
-
-Se `start` falhar com `port is already allocated`, há outro projeto Supabase local ocupando as portas. Derrube-o de qualquer diretório com `npx supabase stop --project-id <id-do-outro-projeto>` — sem `--no-backup`, os dados dele são preservados.
+Se o login falhar sem motivo aparente, o projeto pode estar hibernando (free tier, depois de cerca de uma semana sem uso) — despause no dashboard.
 
 ## Isolamento entre desenvolvimento e produção
 
-Desenvolvimento **nunca** fala com o banco de produção. São três bancos distintos, selecionados só por variáveis de ambiente:
+Desenvolvimento **nunca** fala com o banco de produção. São dois bancos distintos, selecionados só por variáveis de ambiente:
 
 | Ambiente | Banco | Quem usa |
 | --- | --- | --- |
-| Local | Supabase em Docker (`127.0.0.1:54321`) | `npm run dev`, `npx vercel dev` — via `.env.local`, que tem prioridade sobre `.env` no Vite |
-| Preview | projeto hospedado `lingo-dev` (`jmswqnwghtlpxsvellar`) | preview deploys de qualquer branch — via escopos Preview/Development da Vercel |
+| Local e Preview | projeto hospedado `lingo-dev` (`dufnekbwxjklsugkvnve`) | `npm run dev`/`npx vercel dev` via `.env.local` (que tem prioridade sobre `.env` no Vite) e os preview deploys de qualquer branch via escopos Preview/Development da Vercel |
 | Produção | projeto hospedado `supabase-gray-compass` (`uglvzvfgrnzoyfeotter`) | só o deploy da branch **`prod`** — via escopo Production da Vercel |
+
+Local e preview dividem o mesmo banco: o que se cria rodando na máquina aparece no preview da `des`, e vice-versa.
 
 ### URLs
 
@@ -88,7 +77,7 @@ O deploy é feito pelo GitHub Actions com a Vercel CLI, no job `deploy` do `.git
 - O job usa os secrets `VERCEL_TOKEN`, `VERCEL_ORG_ID` e `VERCEL_PROJECT_ID` do repositório no GitHub. O token pertence à conta do Rafael; se expirar, o deploy falha no passo `vercel pull`.
 - Para refazer um deploy sem commit novo, rode de novo o workflow na aba Actions (ou `gh run rerun <id>`).
 
-O `.env` versionado aponta para o local de propósito: é a rede de segurança caso o `.env.local` seja apagado.
+O `.env` (fora do git) aponta para `127.0.0.1:54321`, onde não roda nada, de propósito: é a rede de segurança caso o `.env.local` seja apagado — o app fica sem conta, mas nunca cai em produção.
 
 Consequências práticas:
 
@@ -96,14 +85,14 @@ Consequências práticas:
 - **Nunca rode `npx vercel env pull` sem argumento**: ele sobrescreve o `.env.local` com valores remotos e fura o isolamento. Puxe para outro nome: `npx vercel env pull .env.vercel-prod.bak`.
 - O projeto de produção pertence à organização gerenciada pela integração Supabase da **Vercel Marketplace**, que injeta credenciais nos três escopos de uma vez — foi assim que Preview e Development passaram a apontar para produção. O `lingo-dev` foi criado fora dessa organização justamente para ficar fora do alcance dela. Se algum dia a integração for reconfigurada, **confira `npx vercel env ls` depois**.
 - As demais variáveis que a integração injetou (`SUPABASE_SERVICE_ROLE_KEY`, `POSTGRES_*`, `NEXT_PUBLIC_*`) não são lidas por nenhum código deste repositório — `api/` só usa `ENRICH_*`, `OPENAI_API_KEY` e `TTS_*`.
-- Contas são por projeto Supabase, então a conta de estudo real não existe nem no local nem no `lingo-dev` — crie um usuário de teste em cada. No local, os e-mails de confirmação chegam no Inbucket (`http://localhost:54324`), não na caixa de entrada real.
+- Contas são por projeto Supabase, então a conta de estudo real não existe no `lingo-dev` — crie um usuário de teste. O servidor de e-mail padrão do Supabase manda poucos e-mails por hora; para teste, crie a conta já confirmada (Authentication → Users → Add user, com "Auto Confirm User", ou pelo `/criar-cenario-teste`).
 - O IndexedDB do navegador já é isolado por origem: `localhost:5173`, a URL de preview e o domínio de produção têm bancos locais separados sem nenhuma configuração.
 - O `lingo-dev` está no free tier e **hiberna após cerca de uma semana sem acesso**; despausar é um clique no dashboard do Supabase.
 
 ### Fluxo de uma migration nova
 
-1. Valida no local: `npx supabase db reset` (recria do zero e reaplica tudo).
-2. Aplica no `lingo-dev`: `npx supabase db push --db-url "postgresql://postgres:<senha>@db.jmswqnwghtlpxsvellar.supabase.co:5432/postgres"`.
+1. Aplica no `lingo-dev`: `npx supabase db push --db-url "postgresql://postgres:<senha>@db.dufnekbwxjklsugkvnve.supabase.co:5432/postgres"`. Se a conexão direta falhar por IPv6, use a URL do pooler (dashboard → Connect → Session pooler; o usuário é `postgres.dufnekbwxjklsugkvnve`). Confira com `npx supabase migration list --db-url "<mesma url>"`. Não há banco descartável para ensaiar: revise a migration com cuidado antes do push, porque ela vale na hora para o local e para o preview.
+2. Valida rodando o app local e no preview da `des`.
 3. Em produção, **nunca automaticamente**: só à mão, depois de a mudança ter sido validada de ponta a ponta no preview da `des`, e sempre antes do deploy que depende dela. Passo a passo em [atualizar-producao.md](atualizar-producao.md).
 
 Use sempre `--db-url` explícito em vez de `supabase link` + `db push`: o link deste repositório aponta para **produção**, então um `db push --linked` distraído escreve no banco real.
@@ -114,7 +103,7 @@ Copiar `.env.example` para `.env` e preencher o que for necessário — tudo é 
 
 - `ENRICH_PROVIDER` (`anthropic` padrão ou `gemini`) + `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` — geração automática de tradução/dicas.
 - `OPENAI_API_KEY` + `TTS_VOICE` / `TTS_MODEL` — voz neural.
-- `VITE_SUPABASE_URL` + `VITE_SUPABASE_PUBLISHABLE_KEY` — contas e sincronização. Essas duas vão para o bundle do cliente por design; **nunca** colocar `SUPABASE_SECRET_KEY`/`SUPABASE_SERVICE_ROLE_KEY` aqui. Em desenvolvimento apontam para o banco local — ver "Isolamento entre desenvolvimento e produção" acima.
+- `VITE_SUPABASE_URL` + `VITE_SUPABASE_PUBLISHABLE_KEY` — contas e sincronização. Essas duas vão para o bundle do cliente por design; **nunca** colocar `SUPABASE_SECRET_KEY`/`SUPABASE_SERVICE_ROLE_KEY` aqui. Em desenvolvimento apontam para o `lingo-dev` e moram no `.env.local` — ver "Isolamento entre desenvolvimento e produção" acima.
 
 ## Build
 
@@ -144,7 +133,7 @@ As skills em [.agents/skills/](.agents/skills/) são fluxos de trabalho prontos.
 
 Para mudanças pequenas e bem delimitadas (ajuste, correção de bug, refatoração localizada) há o atalho `/quick-task`: plano curto aprovado pelo usuário → implementação → validação → revisão leve → resumo, tudo em `tasks/quick-<slug>/` (`plano.md` e `resumo.md`). As rules valem do mesmo jeito; se a tarefa crescer, ela redireciona para a esteira completa.
 
-Para montar massa de dados de teste há o `/criar-cenario-teste`: cria, altera e exclui contas `@lingo.test`, decks, cartões e revisões **só** no Supabase local ou no `lingo-dev`, sempre por `.agents/skills/criar-cenario-teste/scripts/sql.sh`, que recusa produção. Os textos vêm de um catálogo fixo (`references/frases.md`), do usuário ou de placeholders, nunca de IA. Os cenários ficam em `tasks/cenario-<slug>/`.
+Para montar massa de dados de teste há o `/criar-cenario-teste`: cria, altera e exclui contas `@lingo.test`, decks, cartões e revisões **só** no `lingo-dev`, sempre por `.agents/skills/criar-cenario-teste/scripts/sql.sh`, que recusa produção. Os textos vêm de um catálogo fixo (`references/frases.md`), do usuário ou de placeholders, nunca de IA. Os cenários ficam em `tasks/cenario-<slug>/`.
 
 As demais são de terceiros e vêm do `skills-lock.json` (`agent-browser`, `supabase`, `vercel-cli`, `vercel-react-best-practices`, `vercel-composition-patterns`) ou foram instaladas à mão (`impeccable`, para trabalho de design de interface). **Não edite skills de terceiros** — a próxima atualização sobrescreve, e alterar o conteúdo invalida o hash do lockfile. Ajustes específicos deste projeto vão aqui no `AGENTS.md` ou nas rules.
 
@@ -185,11 +174,11 @@ O app **não** se divide em "backend numa porta, frontend em outra": `npx vercel
 | --- | --- | --- |
 | Só UI e lógica de estudo | `npm run dev -- --port <porta>` | escolha uma livre em `5100–5199` |
 | `api/` também (tradução, voz, sync) | `npx vercel dev --listen <porta>` | escolha uma livre em `3000–3099` |
-| Contas e sincronização | `npx supabase start` | **portas fixas** `54321–54327` |
+| Contas e sincronização | nada — qualquer um dos dois acima já usa o `lingo-dev` | — |
 
 Confira que a porta está livre antes de subir (`ss -ltn "sport = :<porta>"`) e registre no relatório qual porta e qual processo você iniciou.
 
-As portas do Supabase local **não são realocáveis**: vêm do `supabase/config.toml` e o `.env.local` aponta para elas. Se `npx supabase start` falhar com `port is already allocated`, é outro projeto Supabase ocupando-as — derrube-o com `npx supabase stop --project-id <id-do-outro>` (nunca com `--no-backup`) e avise o usuário de qual projeto você derrubou.
+Não suba `npx supabase start`: o projeto não usa mais Supabase local em Docker.
 
 Ao terminar — inclusive se a execução for interrompida ou bloqueada — encerre graciosamente só os processos que você iniciou e confirme que as portas foram liberadas. Nunca mate processos do usuário ou de outra sessão.
 

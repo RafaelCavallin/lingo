@@ -50,7 +50,7 @@ begin
 end $$;
 
 -- Cria um usuário já confirmado (login com e-mail e senha funciona na hora,
--- sem passar pelo Inbucket). Idempotente: se o e-mail já existe, devolve o id.
+-- sem e-mail de confirmação). Idempotente: se o e-mail já existe, devolve o id.
 create function pg_temp.usuario_teste(p_email text, p_senha text default 'senha-teste-123')
 returns uuid
 language plpgsql as $$

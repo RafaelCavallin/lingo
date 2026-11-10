@@ -60,4 +60,4 @@ Confira as regras do projeto e a TechSpec antes de apontar qualquer problema. Ex
 
    **Conclua quando:** o `codereview.md` estiver salvo conforme o template, com o veredito registrado.
 
-8. **Encerrar o ambiente** — desligue todos os serviços iniciados por esta execução, encerre os processos de forma graciosa e confirme que as portas e containers foram liberados. Não encerre processos do usuário ou de outra sessão, e não derrube um Supabase local que você não subiu. Faça essa limpeza também se a revisão for interrompida, bloqueada ou reprovada.
+8. **Encerrar o ambiente** — desligue todos os serviços iniciados por esta execução, encerre os processos de forma graciosa e confirme que as portas foram liberadas. Não encerre processos do usuário ou de outra sessão. Faça essa limpeza também se a revisão for interrompida, bloqueada ou reprovada.

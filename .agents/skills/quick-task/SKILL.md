@@ -25,7 +25,7 @@ Antes de planejar, avalie o tamanho. Se a tarefa exigir decisões de produto em 
 3. **Aprovar** — mostre o plano ao usuário (resumo do conteúdo + caminho do arquivo) e **pare**, aguardando aprovação explícita. Não escreva código antes disso. Se ele pedir mudanças, atualize o `plano.md` e mostre de novo.
    **Conclua quando:** o usuário tiver aprovado o plano explicitamente; registre a aprovação no `plano.md` (`Status: APROVADO`).
 
-4. **Implementar** — execute os passos do plano. Toda regra de negócio nova ou alterada em `src/services/` entra com teste no mesmo passo (`.agents/rules/tests.md`); bug corrigido ganha um teste que falha sem a correção. Mudança de schema entra como migration nova em `supabase/migrations/`, validada com `npx supabase db reset` — nunca edite uma migration aplicada nem toque em produção.
+4. **Implementar** — execute os passos do plano. Toda regra de negócio nova ou alterada em `src/services/` entra com teste no mesmo passo (`.agents/rules/tests.md`); bug corrigido ganha um teste que falha sem a correção. Mudança de schema entra como migration nova em `supabase/migrations/`, aplicada no `lingo-dev` pelo usuário com o `db push` de "Fluxo de uma migration nova" no `AGENTS.md` — nunca edite uma migration aplicada nem toque em produção.
    Se a implementação revelar que o plano estava errado ou que o escopo cresceu, pare, atualize o `plano.md` e peça nova aprovação antes de seguir.
    **Conclua quando:** todos os passos do plano estiverem implementados com seus testes.
 

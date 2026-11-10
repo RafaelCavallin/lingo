@@ -1,6 +1,6 @@
 # Cenário: <título curto>
 
-- **Alvo:** local | dev (`lingo-dev`)
+- **Alvo:** dev (`lingo-dev`)
 - **Conta:** `<nome>@lingo.test` / senha `<senha>`
 - **Criado em:** <AAAA-MM-DD>
 - **Serve para:** <o que este cenário permite testar: tela, fluxo ou regra>
