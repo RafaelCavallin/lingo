@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { audioFileName, BackupEmpty, BackupFileInvalid } from './backupFormat'
+import { BackupEmpty, BackupFileInvalid } from './backupErrors'
+import { audioFileName } from './backupFormat'
 
 describe('audioFileName', () => {
   it('monta o nome do arquivo de áudio a partir do tipo MIME', () => {

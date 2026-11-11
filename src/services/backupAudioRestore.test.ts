@@ -1,7 +1,8 @@
 import JSZip from 'jszip'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createBackup } from './backupExport'
-import { readBackup, restoreBackup } from './backupRestore'
+import { readBackup } from './backupPreview'
+import { restoreBackup } from './backupRestore'
 import { db, type AudioBlob, type Card, type Deck } from './db'
 import { resetDb } from '../test/dbHelpers'
 

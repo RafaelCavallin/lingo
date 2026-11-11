@@ -1,4 +1,4 @@
-import type { RestorePlan } from '../services/backupRestore'
+import type { RestorePlan } from '../services/backupTypes'
 
 export function RestorePlanChoice({
   value,

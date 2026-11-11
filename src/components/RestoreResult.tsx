@@ -1,7 +1,15 @@
-import type { RestoreReport } from '../services/backupRestore'
-import { nothingApplied } from './restoreResult'
+import type { RestoreReport } from '../services/backupTypes'
+import { nothingApplied, reportNotes } from './restoreResult'
 
-export function RestoreResult({ report, onBack }: { report: RestoreReport; onBack: () => void }) {
+export function RestoreResult({
+  report,
+  safetyFileName,
+  onBack,
+}: {
+  report: RestoreReport
+  safetyFileName: string | null
+  onBack: () => void
+}) {
   const { applied } = report
   const nadaAplicado = nothingApplied(applied)
   return (
@@ -21,6 +29,11 @@ export function RestoreResult({ report, onBack }: { report: RestoreReport; onBac
         {report.skippedInvalid > 0 && (
           <li className="text-muted">{report.skippedInvalid} registros ilegíveis foram descartados</li>
         )}
+        {reportNotes({ report, safetyFileName }).map((note) => (
+          <li key={note} className="text-muted">
+            {note}
+          </li>
+        ))}
       </ul>
       {report.audioIncomplete && (
         <p className="mt-4 rounded-lg border border-miss/40 bg-miss/10 px-3 py-2 text-sm text-miss">

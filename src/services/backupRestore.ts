@@ -1,98 +1,76 @@
-import JSZip from 'jszip'
-import { getBoundUserId } from './auth'
-import { applyRecords, type RestorePlan } from './backupApply'
-import { restoreAudio } from './backupAudioRestore'
-import {
-  BackupEmpty,
-  BackupFileInvalid,
-  MANIFEST_PATH,
-  type BackupPreview,
-  type BackupSource,
-  type ParsedManifest,
-  type RestoreCounts,
-  type RestoreProgress,
-  type RestoreReport,
-} from './backupFormat'
-import { parseManifest } from './backupManifest'
-
-export type { RestorePlan }
-export type { BackupPreview, BackupSource, RestoreCounts, RestoreProgress, RestoreReport }
+import { applyRecords, type AppliedRecords } from './backupApply'
+import { restoreAudio, type AudioRestoreResult } from './backupAudioRestore'
+import type { ParsedManifest } from './backupFormat'
+import type { BackupPreview, RestorePlan, RestoreProgress, RestoreReport } from './backupTypes'
 
 export interface RestoreInput {
   preview: BackupPreview
   plan: RestorePlan
   includeNarrations: boolean
+  skipDuplicates?: boolean
   onProgress?: (progress: RestoreProgress) => void
 }
 
-function toCounts(manifest: ParsedManifest): RestoreCounts {
-  return {
-    decks: manifest.decks.filter((deck) => deck.deletedAt === 0).length,
-    cards: manifest.cards.filter((card) => card.deletedAt === 0).length,
-    reviewLogs: manifest.reviewLogs.length,
-    recordings: manifest.audio.filter((entry) => entry.kind === 'user_recording').length,
-    narrations: manifest.audio.filter((entry) => entry.kind === 'tts').length,
-  }
+interface ReportInput {
+  input: RestoreInput
+  applied: AppliedRecords
+  audio: AudioRestoreResult
+  skippedIds: Set<string>
 }
 
-async function openManifest(file: Blob): Promise<BackupSource> {
-  try {
-    const zip = await JSZip.loadAsync(new Uint8Array(await file.arrayBuffer()))
-    const entry = zip.file(MANIFEST_PATH)
-    if (!entry) throw new BackupFileInvalid()
-    const manifest = parseManifest(JSON.parse(await entry.async('string')) as unknown)
-    if (!manifest) throw new BackupFileInvalid()
-    return { manifest, zip }
-  } catch (e) {
-    if (e instanceof BackupFileInvalid) throw e
-    throw new BackupFileInvalid()
-  }
+function countRecords(manifest: ParsedManifest): number {
+  return manifest.decks.length + manifest.cards.length + manifest.reviewLogs.length
 }
 
-/** Não escreve nada: a prévia existe justamente para o usuário conferir antes. */
-export async function readBackup(file: Blob): Promise<BackupPreview> {
-  const source = await openManifest(file)
-  const { manifest } = source
-  if (manifest.decks.length === 0 && manifest.cards.length === 0 && manifest.reviewLogs.length === 0) {
-    throw new BackupEmpty()
-  }
-  const bound = await getBoundUserId()
+function announceTotalBeforeSingleTransaction(input: RestoreInput): void {
+  const total = countRecords(input.preview.source.manifest)
+  input.onProgress?.({ phase: 'data', done: 0, total })
+}
+
+async function restoreAudioExcept(input: RestoreInput, skippedIds: Set<string>): Promise<AudioRestoreResult> {
+  const { manifest, zip } = input.preview.source
+  return restoreAudio({
+    zip,
+    entries: manifest.audio.filter((entry) => !skippedIds.has(entry.cardId)),
+    includeNarrations: input.includeNarrations,
+    onProgress: (done, total) => input.onProgress?.({ phase: 'audio', done, total }),
+  })
+}
+
+function countSkippedAudio({ input, skippedIds }: ReportInput): number {
+  const { audio } = input.preview.source.manifest
+  return audio.filter(
+    (entry) => skippedIds.has(entry.cardId) && (input.includeNarrations || entry.kind === 'user_recording'),
+  ).length
+}
+
+function buildReport(report: ReportInput): RestoreReport {
+  const { input, applied, audio } = report
   return {
-    exportedAt: manifest.exportedAt,
-    counts: toCounts(manifest),
-    audioBytes: manifest.audio.reduce((total, entry) => total + entry.bytes, 0),
-    accountMismatch: bound !== null && manifest.accountId !== null && bound !== manifest.accountId,
-    discarded: manifest.discarded,
-    source,
+    plan: input.plan,
+    boundToAccount: input.preview.boundToAccount,
+    duplicates: {
+      cards: applied.duplicateCardIds.length,
+      reviewLogs: applied.skippedLogs,
+      audio: countSkippedAudio(report),
+      skipped: input.skipDuplicates ?? false,
+    },
+    applied: { decks: applied.decks, cards: applied.cards, reviewLogs: applied.reviewLogs, audio: audio.applied },
+    tombstoned: applied.tombstoned,
+    skippedStale: audio.stale,
+    skippedInvalid: input.preview.discarded,
+    audioIncomplete: audio.incomplete,
   }
 }
 
 /** O áudio vem depois, e fora da transação dos dados: a recuperação do estudo
  *  não pode depender de haver espaço no navegador para os blobs. */
 export async function restoreBackup(input: RestoreInput): Promise<RestoreReport> {
-  const { manifest, zip } = input.preview.source
-  const records = manifest.decks.length + manifest.cards.length + manifest.reviewLogs.length
-  // `applyRecords` é uma transação única — não há progresso real dentro dela.
-  // Emitir antes, com o total conhecido, é o que permite à UI mostrar "N
-  // registros" em vez de uma barra que pula de 0% a 100%.
-  input.onProgress?.({ phase: 'data', done: 0, total: records })
-  const applied = await applyRecords(manifest, input.plan)
-  const audio = await restoreAudio({
-    zip,
-    entries: manifest.audio,
-    includeNarrations: input.includeNarrations,
-    onProgress: (done, total) => input.onProgress?.({ phase: 'audio', done, total }),
-  })
-  return {
-    applied: {
-      decks: applied.decks,
-      cards: applied.cards,
-      reviewLogs: applied.reviewLogs,
-      audio: audio.applied,
-    },
-    tombstoned: applied.tombstoned,
-    skippedStale: audio.stale,
-    skippedInvalid: input.preview.discarded,
-    audioIncomplete: audio.incomplete,
-  }
+  const { manifest } = input.preview.source
+  const skipDuplicates = input.skipDuplicates ?? false
+  announceTotalBeforeSingleTransaction(input)
+  const applied = await applyRecords(manifest, { plan: input.plan, skipDuplicates })
+  const skippedIds = new Set(skipDuplicates ? applied.duplicateCardIds : [])
+  const audio = await restoreAudioExcept(input, skippedIds)
+  return buildReport({ input, applied, audio, skippedIds })
 }

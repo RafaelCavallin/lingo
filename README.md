@@ -16,7 +16,7 @@ Diferente de um flashcard tradicional, o Lingo trata cada cartão como uma frase
 - **Importação de baralhos do Anki** (`.apkg`) com mapeamento de campos e prévia — traz o conteúdo, não o histórico.
 - **Progresso** — retenção de 30 dias, sequência de dias, previsão de carga futura e heatmap de constância.
 - **Múltiplos baralhos**, com troca rápida, e exclusão de cartões e baralhos.
-- **Backup e restauração** em um arquivo `.zip` — leva baralhos, cartões, histórico e as gravações da sua voz (as narrações são opcionais), e volta mesclando ou substituindo o conteúdo do aparelho.
+- **Backup e restauração** em um arquivo `.zip` — leva baralhos, cartões, histórico e as gravações da sua voz (as narrações são opcionais), e volta mesclando (avisando de cartões repetidos) ou substituindo o conteúdo do aparelho, sempre com uma cópia de segurança antes. Lê a versão atual do formato e a anterior.
 - **Conta opcional** (email e senha) — sincroniza baralhos, cartões e histórico entre aparelhos via Supabase (Postgres + RLS); sem conta, o app funciona 100% offline igual antes.
 - **Otimizador do FSRS-6** rodando em Web Worker (wasm) sobre o seu próprio histórico, offline e com progresso em tempo real; Ajustes mostra a versão do FSRS e se o baralho usa parâmetros padrão ou otimizados.
 - **Voz neural opcional** (TTS em nuvem) com MP3 em cache local; sem chave configurada, usa a voz do navegador.

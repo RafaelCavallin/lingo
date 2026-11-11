@@ -11,7 +11,7 @@ export function RestoreFilePicker({ onPick }: { onPick: (file: File) => void }) 
         <span className="font-mono text-xs text-muted">lingo-backup-AAAA-MM-DD.zip</span>
         <input
           type="file"
-          accept=".zip,application/zip"
+          accept=".zip,application/zip,.json,application/json"
           className="sr-only"
           onChange={(e) => e.target.files?.[0] && onPick(e.target.files[0])}
         />

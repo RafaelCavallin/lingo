@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { BackupFileInvalid, BackupFormatTooOld, BackupVersionTooNew } from './backupErrors'
 import { BACKUP_FORMAT, BACKUP_VERSION, type AudioEntry } from './backupFormat'
 import { parseManifest } from './backupManifest'
 import type { Card, Deck, ReviewLog } from './db'
@@ -77,6 +78,7 @@ function makeManifest(overrides: Record<string, unknown> = {}) {
   return {
     format: BACKUP_FORMAT,
     version: BACKUP_VERSION,
+    appVersion: '1.0.0+a1b2c3d',
     exportedAt: 1788000000000,
     accountId: null,
     includesNarrations: false,
@@ -93,6 +95,9 @@ describe('parseManifest', () => {
     const parsed = parseManifest(makeManifest())
 
     expect(parsed).toEqual({
+      formatVersion: 4,
+      convertedFrom: null,
+      appVersion: '1.0.0+a1b2c3d',
       exportedAt: 1788000000000,
       accountId: null,
       includesNarrations: false,
@@ -101,6 +106,7 @@ describe('parseManifest', () => {
       reviewLogs: [makeLog()],
       audio: [makeAudio()],
       discarded: 0,
+      unknownValues: 0,
     })
   })
 
@@ -108,20 +114,45 @@ describe('parseManifest', () => {
     const raw = makeManifest()
     delete (raw as Record<string, unknown>).format
 
-    expect(parseManifest(raw)).toBeNull()
+    expect(() => parseManifest(raw)).toThrow(BackupFileInvalid)
   })
 
   it('rejeita manifesto de outro formato', () => {
-    expect(parseManifest(makeManifest({ format: 'anki-backup' }))).toBeNull()
+    expect(() => parseManifest(makeManifest({ format: 'anki-backup' }))).toThrow(BackupFileInvalid)
   })
 
-  it('rejeita manifesto de versão desconhecida', () => {
-    expect(parseManifest(makeManifest({ version: 2 }))).toBeNull()
+  it('rejeita como formato antigo o manifesto de duas versões atrás', () => {
+    expect(() => parseManifest(makeManifest({ version: BACKUP_VERSION - 2 }))).toThrow(BackupFormatTooOld)
+  })
+
+  it('rejeita como mais novo o manifesto de versão acima da atual', () => {
+    expect(() => parseManifest(makeManifest({ version: BACKUP_VERSION + 1 }))).toThrow(BackupVersionTooNew)
   })
 
   it('rejeita o que não é um objeto de manifesto', () => {
-    expect(parseManifest(null)).toBeNull()
-    expect(parseManifest('backup')).toBeNull()
+    expect(() => parseManifest(null)).toThrow(BackupFileInvalid)
+    expect(() => parseManifest('backup')).toThrow(BackupFileInvalid)
+  })
+
+  it('rejeita o manifesto da versão atual sem os campos obrigatórios do envelope', () => {
+    const raw = makeManifest()
+    delete (raw as Record<string, unknown>).decks
+
+    expect(() => parseManifest(raw)).toThrow(BackupFileInvalid)
+  })
+
+  it('converte o manifesto da versão anterior sem tocar nos registros', () => {
+    const v3 = makeManifest({ version: BACKUP_VERSION - 1 })
+    delete (v3 as Record<string, unknown>).appVersion
+
+    const parsed = parseManifest(v3)
+
+    expect(parsed.formatVersion).toBe(BACKUP_VERSION - 1)
+    expect(parsed.convertedFrom).toBe(BACKUP_VERSION - 1)
+    expect(parsed.appVersion).toBeNull()
+    expect(parsed.cards).toEqual([makeCard()])
+    expect(parsed.reviewLogs).toEqual([makeLog()])
+    expect(parsed.discarded).toBe(0)
   })
 
   it('aceita cartão com dica do tipo idiom', () => {
@@ -137,6 +168,24 @@ describe('parseManifest', () => {
     const raw = makeManifest({ cards: [makeCard({ hints: [{ type: 'slang', text: 'x', source: 'user' } as never] })] })
 
     expect(parseManifest(raw)?.discarded).toBe(1)
+  })
+
+  it('conta como valor desconhecido o cartão com tipo de dica fora da lista', () => {
+    const raw = makeManifest({ cards: [makeCard({ hints: [{ type: 'slang', text: 'x', source: 'user' } as never] })] })
+
+    const parsed = parseManifest(raw)
+
+    expect(parsed.discarded).toBe(1)
+    expect(parsed.unknownValues).toBe(1)
+  })
+
+  it('não conta como valor desconhecido o cartão sem campo obrigatório', () => {
+    const raw = makeManifest({ cards: [makeCard(), { id: 'c2', deckId: 'd1' }] })
+
+    const parsed = parseManifest(raw)
+
+    expect(parsed.discarded).toBe(1)
+    expect(parsed.unknownValues).toBe(0)
   })
 
   it('descarta cartão malformado sem invalidar o manifesto inteiro', () => {

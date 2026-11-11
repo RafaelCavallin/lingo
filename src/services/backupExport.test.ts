@@ -86,7 +86,7 @@ function makeRecording(overrides: Partial<AudioBlob> = {}): AudioBlob {
 async function readZip(file: Blob) {
   const zip = await JSZip.loadAsync(Buffer.from(await file.arrayBuffer()))
   const raw = await zip.file(MANIFEST_PATH)!.async('string')
-  return { zip, manifest: parseManifest(JSON.parse(raw) as unknown)! }
+  return { zip, manifest: parseManifest(JSON.parse(raw) as unknown) }
 }
 
 let restoreObjectUrl = () => {}

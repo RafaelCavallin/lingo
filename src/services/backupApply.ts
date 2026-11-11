@@ -1,15 +1,14 @@
 import type { EntityTable } from 'dexie'
-import { isUntouchedDefaultDeck } from './auth'
-import { selectOrphans, selectWinners } from './backupPlan'
-import { db, type Card, type Deck, type ReviewLog } from './db'
+import { findDuplicatesAgainstLocal } from './backupDuplicates'
+import { selectWinners } from './backupPlan'
+import { dropUntouchedDefaultDeck, tombstoneOrphans } from './backupTombstones'
+import type { RestoreContent, RestorePlan } from './backupTypes'
+import { db, type ReviewLog } from './db'
 import type { Versioned } from './lww'
 
-export type RestorePlan = 'merge' | 'replace'
-
-export interface RestoreContent {
-  decks: Deck[]
-  cards: Card[]
-  reviewLogs: ReviewLog[]
+export interface ApplyOptions {
+  plan: RestorePlan
+  skipDuplicates: boolean
 }
 
 export interface AppliedRecords {
@@ -17,6 +16,8 @@ export interface AppliedRecords {
   cards: number
   reviewLogs: number
   tombstoned: number
+  duplicateCardIds: string[]
+  skippedLogs: number
 }
 
 /**
@@ -55,50 +56,31 @@ function pending<T extends Versioned>(rows: T[], plan: RestorePlan, now: number)
   return rows.map((row) => ({ ...row, dirty: 1 as const, updatedAt: now }))
 }
 
-async function tombstoneOrphans(content: RestoreContent, now: number): Promise<number> {
-  const [localDecks, localCards] = await Promise.all([
-    db.decks.filter((deck) => deck.deletedAt === 0).primaryKeys(),
-    db.cards.filter((card) => card.deletedAt === 0).primaryKeys(),
-  ])
-  const deckIds = selectOrphans({ localIds: localDecks, incomingIds: content.decks.map((d) => d.id) })
-  const cardIds = selectOrphans({ localIds: localCards, incomingIds: content.cards.map((c) => c.id) })
-  const tombstone = { deletedAt: now, updatedAt: now, dirty: 1 as const }
-  await db.decks.where('id').anyOf(deckIds).modify(tombstone)
-  await db.cards.where('id').anyOf(cardIds).modify(tombstone)
-  return deckIds.length + cardIds.length
+/** Calculado dentro da transação, não aproveitado da prévia: um sync entre a
+ *  prévia e a confirmação pode ter mudado o que é duplicata. Na substituição o
+ *  conteúdo local deixa de valer, então não há o que comparar. */
+async function splitDuplicates(content: RestoreContent, options: ApplyOptions) {
+  const found = options.plan === 'merge' ? await findDuplicatesAgainstLocal(content.cards) : []
+  const duplicateCardIds = found.map((card) => card.id)
+  const skipped = new Set(options.skipDuplicates ? duplicateCardIds : [])
+  return {
+    duplicateCardIds,
+    cards: content.cards.filter((card) => !skipped.has(card.id)),
+    reviewLogs: content.reviewLogs.filter((log) => !skipped.has(log.cardId)),
+  }
 }
 
-/**
- * O baralho semeado na primeira abertura não é dado do usuário: mantê-lo ao
- * lado do que veio do arquivo deixaria o aparelho com um baralho vazio
- * homônimo — e, pior, com ele ainda selecionado, dando a impressão de que a
- * restauração não trouxe nada. Mesmo tratamento que a entrada em uma conta dá.
- *
- * Tombstone, não `bulkDelete`: se este baralho já tiver subido ao servidor
- * (um sync no boot pode correr antes do usuário abrir a restauração), apagar
- * sem marcar `dirty` nunca chegaria ao servidor, e o baralho vazio voltaria
- * no próximo pull — o mesmo baralho homônimo que isto existe para evitar.
- *
- * Roda dentro da transação da restauração: fora dela, a interface enxerga o
- * instante sem baralho nenhum, cai na tela de "nenhum baralho" e desmonta a
- * própria tela de restauração no meio da operação.
- */
-async function dropUntouchedDefaultDeck(content: RestoreContent, now: number): Promise<void> {
-  if (content.decks.length === 0) return
-  if (!(await isUntouchedDefaultDeck())) return
-  const ids = await db.decks.filter((deck) => deck.deletedAt === 0).primaryKeys()
-  const seeded = ids.filter((id) => !content.decks.some((deck) => deck.id === id))
-  await db.decks.where('id').anyOf(seeded).modify({ deletedAt: now, updatedAt: now, dirty: 1 })
-}
-
-export async function applyRecords(content: RestoreContent, plan: RestorePlan): Promise<AppliedRecords> {
+export async function applyRecords(content: RestoreContent, options: ApplyOptions): Promise<AppliedRecords> {
   const now = Date.now()
+  const { plan } = options
   return db.transaction('rw', db.decks, db.cards, db.reviewLogs, async () => {
+    const kept = await splitDuplicates(content, options)
     await dropUntouchedDefaultDeck(content, now)
     const decks = await applyRows(db.decks, pending(content.decks, plan, now), plan)
-    const cards = await applyRows(db.cards, pending(content.cards, plan, now), plan)
-    const reviewLogs = await addMissingLogs(content.reviewLogs.map((log) => ({ ...log, dirty: 1 })))
+    const cards = await applyRows(db.cards, pending(kept.cards, plan, now), plan)
+    const reviewLogs = await addMissingLogs(kept.reviewLogs.map((log) => ({ ...log, dirty: 1 })))
     const tombstoned = plan === 'replace' ? await tombstoneOrphans(content, now) : 0
-    return { decks, cards, reviewLogs, tombstoned }
+    const skippedLogs = content.reviewLogs.length - kept.reviewLogs.length
+    return { decks, cards, reviewLogs, tombstoned, duplicateCardIds: kept.duplicateCardIds, skippedLogs }
   })
 }

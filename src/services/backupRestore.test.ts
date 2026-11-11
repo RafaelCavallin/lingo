@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import JSZip from 'jszip'
 import { createBackup } from './backupExport'
-import { BackupEmpty, BackupFileInvalid } from './backupFormat'
-import { readBackup, restoreBackup, type RestorePlan } from './backupRestore'
+import { BackupEmpty, BackupFileInvalid } from './backupErrors'
+import { readBackup } from './backupPreview'
+import { restoreBackup } from './backupRestore'
+import type { RestorePlan } from './backupTypes'
 import { DEFAULT_DECK_NAME, db, type Card, type Deck, type ReviewLog } from './db'
 import { resetDb } from '../test/dbHelpers'
 

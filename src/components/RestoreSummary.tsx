@@ -1,4 +1,4 @@
-import type { BackupPreview } from '../services/backupRestore'
+import type { BackupPreview } from '../services/backupTypes'
 import { formatBytes } from './formatBytes'
 
 /** Acima disso o navegador pode demorar ou ficar sem espaço — o aviso é para
@@ -12,6 +12,16 @@ export function RestoreSummary({ preview }: { preview: BackupPreview }) {
       <p className="mt-2 font-mono text-xs text-muted">
         gerado em {new Date(preview.exportedAt).toLocaleString('pt-BR')}
       </p>
+      <p className="mt-1 font-mono text-xs text-muted">
+        formato v{preview.formatVersion}
+        {preview.appVersion ? ` · app ${preview.appVersion}` : ''}
+      </p>
+      {preview.convertedFrom !== null && (
+        <p className="mt-3 text-sm text-muted">
+          Este arquivo é da versão {preview.convertedFrom} do formato e foi convertido para a atual ao
+          ser lido. O arquivo em si não muda.
+        </p>
+      )}
       <ul className="mt-6 space-y-1 text-sm text-text/90">
         <li>
           {counts.decks} baralhos · {counts.cards} cartões · {counts.reviewLogs} revisões
@@ -22,6 +32,12 @@ export function RestoreSummary({ preview }: { preview: BackupPreview }) {
         </li>
         {preview.discarded > 0 && (
           <li className="text-miss">{preview.discarded} registros ilegíveis serão descartados</li>
+        )}
+        {preview.unknownValues > 0 && (
+          <li className="text-miss">
+            Desses, {preview.unknownValues} por valores que este app não conhece: o arquivo pode ter sido
+            criado por uma versão mais nova do Lingo. Atualize o app se isso não era esperado.
+          </li>
         )}
       </ul>
       {preview.accountMismatch && (

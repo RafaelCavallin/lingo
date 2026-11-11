@@ -1,6 +1,8 @@
 import { useState } from 'react'
-import type { BackupPreview, RestorePlan } from '../services/backupRestore'
+import type { BackupPreview, RestorePlan } from '../services/backupTypes'
+import type { RestoreChoice } from '../services/restoreChoice'
 import { RestoreConfirm } from './RestoreConfirm'
+import { RestoreMergeOptions } from './RestoreMergeOptions'
 import { RestorePlanChoice } from './RestorePlanChoice'
 import { RestoreSummary } from './RestoreSummary'
 import { confirmationFor } from './restoreConfirm'
@@ -12,12 +14,19 @@ export function RestorePreviewCard({
 }: {
   preview: BackupPreview
   onCancel: () => void
-  onConfirm: (choice: { plan: RestorePlan; includeNarrations: boolean }) => void
+  onConfirm: (choice: RestoreChoice) => void
 }) {
   const [plan, setPlan] = useState<RestorePlan>('merge')
   const [includeNarrations, setIncludeNarrations] = useState(preview.counts.narrations > 0)
+  const [skipDuplicates, setSkipDuplicates] = useState(true)
+  const [safetyCopy, setSafetyCopy] = useState(preview.hasLocalData)
   const [confirming, setConfirming] = useState(false)
-  const confirmation = confirmationFor({ plan, accountMismatch: preview.accountMismatch })
+  const choice: RestoreChoice = { plan, includeNarrations, skipDuplicates, safetyCopy }
+  const confirmation = confirmationFor({
+    plan,
+    accountMismatch: preview.accountMismatch,
+    boundToAccount: preview.boundToAccount,
+  })
 
   return (
     <div>
@@ -41,18 +50,25 @@ export function RestorePreviewCard({
         <RestorePlanChoice value="merge" current={plan} onSelect={setPlan} />
         <RestorePlanChoice value="replace" current={plan} onSelect={setPlan} />
       </fieldset>
+      {plan === 'merge' && (
+        <RestoreMergeOptions
+          preview={preview}
+          skipDuplicates={skipDuplicates}
+          onSkipDuplicatesChange={setSkipDuplicates}
+          safetyCopy={safetyCopy}
+          onSafetyCopyChange={setSafetyCopy}
+        />
+      )}
       {confirming && confirmation ? (
         <RestoreConfirm
           confirmation={confirmation}
-          onConfirm={() => onConfirm({ plan, includeNarrations })}
+          onConfirm={() => onConfirm(choice)}
           onBack={() => setConfirming(false)}
         />
       ) : (
         <div className="mt-8 flex flex-wrap items-center gap-4">
           <button
-            onClick={() =>
-              confirmation ? setConfirming(true) : onConfirm({ plan, includeNarrations })
-            }
+            onClick={() => (confirmation ? setConfirming(true) : onConfirm(choice))}
             className="rounded-full bg-signal px-6 py-3 text-sm font-medium text-ink transition hover:brightness-110"
           >
             Restaurar

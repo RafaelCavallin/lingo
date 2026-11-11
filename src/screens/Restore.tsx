@@ -1,20 +1,23 @@
 import { useState } from 'react'
 import { errorMessageOf } from '../components/asyncAction'
 import { MobileNav } from '../components/MobileNav'
+import { RestoreError } from '../components/RestoreError'
 import { RestorePreviewCard } from '../components/RestorePreviewCard'
 import { RestoreResult } from '../components/RestoreResult'
 import { RestoreFilePicker } from '../components/RestoreFilePicker'
 import { RestoreProgressBar } from '../components/RestoreProgressBar'
 import { Skeleton, SkeletonLines } from '../components/Skeleton'
-import type { BackupPreview, RestorePlan, RestoreReport } from '../services/backupRestore'
+import type { BackupPreview } from '../services/backupTypes'
+import { wantsSafetyCopy, type RestoreChoice } from '../services/restoreChoice'
 import type { RestoreStage } from '../services/restoreProgressView'
+import type { RestoreOutcome } from '../services/restoreRun'
 
 type Stage =
   | { name: 'pick' }
   | { name: 'reading' }
   | { name: 'preview'; preview: BackupPreview }
   | { name: 'applying'; stage: RestoreStage; includesSafetyBackup: boolean }
-  | { name: 'done'; report: RestoreReport }
+  | ({ name: 'done' } & RestoreOutcome)
 
 export function Restore({ onBack }: { onBack: () => void }) {
   const [stage, setStage] = useState<Stage>({ name: 'pick' })
@@ -24,7 +27,7 @@ export function Restore({ onBack }: { onBack: () => void }) {
     setError(null)
     setStage({ name: 'reading' })
     try {
-      const { readBackup } = await import('../services/backupRestore')
+      const { readBackup } = await import('../services/backupPreview')
       setStage({ name: 'preview', preview: await readBackup(file) })
     } catch (e) {
       setError(errorMessageOf(e, 'Não foi possível ler o arquivo.'))
@@ -32,26 +35,14 @@ export function Restore({ onBack }: { onBack: () => void }) {
     }
   }
 
-  async function run(preview: BackupPreview, choice: { plan: RestorePlan; includeNarrations: boolean }) {
-    const includesSafetyBackup = choice.plan === 'replace'
+  async function run(preview: BackupPreview, choice: RestoreChoice) {
+    setError(null)
+    const includesSafetyBackup = wantsSafetyCopy(choice)
     const setApplying = (s: RestoreStage) => setStage({ name: 'applying', stage: s, includesSafetyBackup })
     setApplying({ step: includesSafetyBackup ? 'safety-backup' : 'data', done: null, total: null })
     try {
-      const { restoreBackup } = await import('../services/backupRestore')
-      if (includesSafetyBackup) {
-        const { downloadBackup } = await import('../services/backupExport')
-        await downloadBackup({
-          includeNarrations: false,
-          onProgress: (pct) => setApplying({ step: 'safety-backup', done: pct, total: 100 }),
-        })
-      }
-      const report = await restoreBackup({
-        preview,
-        ...choice,
-        onProgress: (progress) =>
-          setApplying({ step: progress.phase, done: progress.done, total: progress.total }),
-      })
-      setStage({ name: 'done', report })
+      const { runRestore } = await import('../services/restoreRun')
+      setStage({ name: 'done', ...(await runRestore({ preview, choice, onStage: setApplying })) })
     } catch (e) {
       setError(errorMessageOf(e, 'A restauração falhou.'))
       setStage({ name: 'preview', preview })
@@ -65,7 +56,7 @@ export function Restore({ onBack }: { onBack: () => void }) {
         <MobileNav />
       </header>
       <main className="flex-1 py-8">
-        {error && <p className="mb-6 text-sm text-miss">{error}</p>}
+        {error && <RestoreError message={error} />}
         {stage.name === 'pick' && <RestoreFilePicker onPick={(f) => void pick(f)} />}
         {stage.name === 'reading' && (
           <div>
@@ -89,7 +80,9 @@ export function Restore({ onBack }: { onBack: () => void }) {
         {stage.name === 'applying' && (
           <RestoreProgressBar stage={stage.stage} includesSafetyBackup={stage.includesSafetyBackup} />
         )}
-        {stage.name === 'done' && <RestoreResult report={stage.report} onBack={onBack} />}
+        {stage.name === 'done' && (
+          <RestoreResult report={stage.report} safetyFileName={stage.safetyFileName} onBack={onBack} />
+        )}
       </main>
     </div>
   )
