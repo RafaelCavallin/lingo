@@ -4,6 +4,7 @@ import { setVoice, setSpeechRate, speech, normalRate, usingNeuralVoice } from '.
 import { lastSyncAt, syncNow } from '../services/sync'
 import { useAuth } from '../contexts/AuthContext'
 import { MobileNav } from '../components/MobileNav'
+import { AppVersionNote } from '../components/AppVersionNote'
 import { BackupSection } from '../components/BackupSection'
 import { OptimizeSection } from '../components/OptimizeSection'
 import { Message, Section, Toggle } from '../components/SettingsControls'
@@ -226,6 +227,8 @@ export function Settings({
         <BackupSection />
 
         <OptimizeSection deck={deck} />
+
+        <AppVersionNote />
       </main>
     </div>
   )
