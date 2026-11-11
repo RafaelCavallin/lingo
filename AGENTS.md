@@ -182,6 +182,20 @@ Não suba `npx supabase start`: o projeto não usa mais Supabase local em Docker
 
 Ao terminar — inclusive se a execução for interrompida ou bloqueada — encerre graciosamente só os processos que você iniciou e confirme que as portas foram liberadas. Nunca mate processos do usuário ou de outra sessão.
 
+## Versionamento
+
+O Lingo usa SemVer (`MAJOR.MINOR.PATCH`), com a versão no `package.json`. A `prod` de hoje é a `1.0.0` (tag `v1.0.0`).
+
+| Incrementa | Quando | Exemplo |
+| --- | --- | --- |
+| PATCH | Só correções e ajustes pequenos (`/quick-task`) | `1.0.0` → `1.0.1` |
+| MINOR | Ao menos uma funcionalidade nova (PRD entregue) | `1.0.1` → `1.1.0` |
+| MAJOR | Quebra de compatibilidade para o usuário (backup antigo que deixa de abrir, sync incompatível com aparelho não atualizado) | `1.4.2` → `2.0.0` |
+
+- **Uma versão por promoção à `prod`**, definida na `des` antes do merge (passo 3 de [atualizar-producao.md](atualizar-producao.md)), com `npm version <patch|minor|major>` e a tag `vX.Y.Z`. Entre duas promoções a versão não muda.
+- O build expõe `APP_VERSION` (`src/services/appVersion.ts`) como `X.Y.Z+<commit curto>`, ou `X.Y.Z+dev` fora do CI. Aparece no fim de Ajustes e é a versão do app gravada nos backups.
+- Nenhum agente roda `npm version`, cria tag ou promove sozinho: faz parte do roteiro manual de produção.
+
 ## Commits
 
 **Nunca assine o commit como coautor.** Não acrescente `Co-Authored-By: Claude ... <noreply@anthropic.com>` — nem nenhuma outra linha de atribuição a um modelo — à mensagem do commit ou à descrição de um PR, seja qual for o modelo da vez. Isso vale mesmo quando a configuração da ferramenta mandar assinar: esta regra tem precedência.

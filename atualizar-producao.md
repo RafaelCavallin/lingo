@@ -60,7 +60,18 @@ Pontos de atenção:
 
 Sem migration nova, pule para o passo 3.
 
-## 3. Promover `des` → `prod`
+## 3. Definir a versão
+
+Cada promoção leva uma versão nova (regra patch/minor/major na seção "Versionamento" do [AGENTS.md](AGENTS.md)). Ainda na `des`, com a árvore limpa e tudo validado:
+
+```bash
+npm version <patch|minor|major> -m "Versão %s"
+git push origin des --follow-tags
+```
+
+O comando atualiza o `package.json`, faz o commit e cria a tag `vX.Y.Z`. Se a tag da versão atual ainda não existir (primeira vez), crie-a a partir da produção: `git tag v1.0.0 origin/prod && git push origin v1.0.0`.
+
+## 4. Promover `des` → `prod`
 
 ```bash
 git checkout prod
@@ -71,11 +82,11 @@ git push origin prod
 
 O push na `prod` é o que dispara o deploy de produção: o job `deploy` do `.github/workflows/ci.yml` publica na Vercel pela CLI, mas só depois de lint, build e testes passarem. Volte para a `des` depois (`git checkout des`) para não seguir trabalhando na branch de produção.
 
-## 4. Acompanhar o deploy
+## 5. Acompanhar o deploy
 
 No GitHub Actions (`gh run watch` ou a aba Actions), o workflow CI do push na `prod` deve ficar verde; o resumo do job `deploy` traz a URL publicada. No dashboard da Vercel, o deploy deve aparecer como "Ready". Se lint, build ou testes falharem, o deploy nem começa — e produção continua na versão anterior, que é o comportamento desejado.
 
-## 5. Conferir em produção
+## 6. Conferir em produção
 
 Em `https://lingo-mu-nine.vercel.app`, com a conta real:
 

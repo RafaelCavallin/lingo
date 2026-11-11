@@ -1,6 +1,10 @@
 import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+import { readFileSync } from 'node:fs'
+
+const packageVersion = (JSON.parse(readFileSync('./package.json', 'utf-8')) as { version: string }).version
+const commitSha = process.env.GITHUB_SHA ?? process.env.VERCEL_GIT_COMMIT_SHA ?? null
 
 // O otimizador do FSRS usa threads no wasm, que exigem isolamento de origem.
 // Com as fontes auto-hospedadas, ligar isso não quebra mais nada.
@@ -10,6 +14,10 @@ const isolation = {
 }
 
 export default defineConfig({
+  define: {
+    __APP_PACKAGE_VERSION__: JSON.stringify(packageVersion),
+    __APP_COMMIT_SHA__: JSON.stringify(commitSha),
+  },
   server: { headers: isolation },
   preview: { headers: isolation },
   worker: { format: 'es' },
