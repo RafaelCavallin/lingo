@@ -51,7 +51,12 @@ jobs:
       - run: npm install --global vercel@${VERCEL_CLI_VERSION}
 
       - name: Baixa variáveis e configurações do ambiente
-        run: vercel pull --yes --environment="$DEPLOY_ENV" --git-branch="$GITHUB_REF_NAME"
+        run: |
+          if [ "$DEPLOY_ENV" = "preview" ]; then
+            vercel pull --yes --environment=preview --git-branch="$GITHUB_REF_NAME"
+          else
+            vercel pull --yes --environment="$DEPLOY_ENV"
+          fi
 
       - name: Build
         run: vercel build --environment="$DEPLOY_ENV"
